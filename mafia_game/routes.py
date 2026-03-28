@@ -34,6 +34,17 @@ def join():
     return jsonify(service.add_player(name))
 
 
+@game_bp.route("/leave", methods=["POST"])
+def leave():
+    payload = request.get_json(silent=True) or {}
+    name = payload.get("name")
+
+    if not service.remove_player(name):
+        return jsonify({"removed": False})
+
+    return jsonify({"removed": True})
+
+
 @game_bp.route("/players")
 def get_players():
     return jsonify(store.players)

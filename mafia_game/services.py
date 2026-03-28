@@ -15,6 +15,52 @@ class GameService:
             self.store.players.append(name)
         return self.store.players
 
+    def remove_player(self, name: Optional[str]) -> bool:
+        if not name or name not in self.store.players:
+            return False
+
+        self.store.players.remove(name)
+
+        role = self.store.roles.pop(name, None)
+        self.store.police_reports.pop(name, None)
+        self.store.mafia_votes.pop(name, None)
+        self.store.mafia_suggestions.pop(name, None)
+        self.store.mafia_votes = {
+            player: target
+            for player, target in self.store.mafia_votes.items()
+            if target != name
+        }
+        self.store.mafia_suggestions = {
+            player: target
+            for player, target in self.store.mafia_suggestions.items()
+            if target != name
+        }
+
+        if self.store.actions.get("doctor") == name:
+            self.store.actions["doctor"] = None
+        if self.store.actions.get("police") == name:
+            self.store.actions["police"] = None
+
+        if name in self.store.game_state.alive:
+            self.store.game_state.alive.remove(name)
+            self.store.game_state.eliminated.append(name)
+        elif name in self.store.game_state.eliminated:
+            self.store.game_state.eliminated.remove(name)
+
+        self._remove_votes_for_player(name)
+
+        if role == "Police":
+            self.store.police_reports = {
+                player: reports
+                for player, reports in self.store.police_reports.items()
+                if player != name
+            }
+
+        if self.store.game_started:
+            self.check_winner()
+
+        return True
+
     def start_game(self) -> Tuple[bool, Optional[str]]:
         if len(self.store.players) < 4:
             return False, "Minimum 4 players required"
@@ -220,3 +266,16 @@ class GameService:
             self.store.game_state.winner = "Villagers"
         elif mafia >= others:
             self.store.game_state.winner = "Mafia"
+
+    def _remove_votes_for_player(self, name: str) -> None:
+        updated_votes: dict[str, int] = {}
+        updated_voted: dict[str, str] = {}
+
+        for voter, target in self.store.voted.items():
+            if voter == name or target == name:
+                continue
+            updated_voted[voter] = target
+            updated_votes[target] = updated_votes.get(target, 0) + 1
+
+        self.store.voted = updated_voted
+        self.store.votes = updated_votes

@@ -11,6 +11,11 @@ h3 {
     margin: 8px 0;
 }
 
+h4 {
+    margin: 10px 0 6px;
+    color: #cfd8dc;
+}
+
 input,
 select,
 button {
@@ -62,6 +67,10 @@ button:disabled {
 
 .winner-text {
     color: #f1c40f;
+}
+
+.hidden {
+    display: none;
 }
 
 ul {

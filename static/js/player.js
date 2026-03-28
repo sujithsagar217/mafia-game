@@ -10,8 +10,11 @@ let suggestRendered = false;
 
 let selectedVote = null;
 let selectedAction = null;
+let joinedGame = false;
 
 document.getElementById("joinBtn").addEventListener("click", joinGame);
+window.addEventListener("pagehide", leaveGameSilently);
+window.addEventListener("beforeunload", leaveGameSilently);
 
 function joinGame() {
     playerName = document.getElementById("name").value.trim();
@@ -23,10 +26,26 @@ function joinGame() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: playerName })
-    }).then(() => {
-        document.getElementById("name").disabled = true;
-        document.getElementById("joinBtn").disabled = true;
-    });
+    })
+        .then((response) =>
+            response.json().then((data) => ({
+                ok: response.ok,
+                data
+            }))
+        )
+        .then(({ ok, data }) => {
+            if (!ok) {
+                joinedGame = false;
+                showBanner(data.error || "Unable to join the game.");
+                return;
+            }
+
+            joinedGame = true;
+            document.getElementById("name").disabled = true;
+            document.getElementById("joinBtn").disabled = true;
+            document.getElementById("waitingBox").innerHTML =
+                '<div class="waiting-banner">Joined successfully. Waiting for the host to start the game...</div>';
+        });
 }
 
 function updateUI() {
@@ -93,6 +112,8 @@ function updateUI() {
             renderActions(state);
             renderSuggestions(state);
             renderVoting(state);
+            renderLiveVotes(state);
+            updatePoliceReportsVisibility();
 
             if (currentRole === "Police") {
                 fetch("/police_reports/" + playerName)
@@ -108,6 +129,7 @@ function renderRole() {
     }
 
     document.getElementById("role").innerText = "Role: " + currentRole;
+    updatePoliceReportsVisibility();
 
     if (currentRole === "Mafia") {
         const team = Object.keys(allRoles).filter(
@@ -257,6 +279,68 @@ function renderVoting(state) {
     voteRendered = true;
 }
 
+function renderLiveVotes(state) {
+    const box = document.getElementById("liveVoteBox");
+
+    if (state.phase !== "voting") {
+        hideLiveVotes();
+        return;
+    }
+
+    box.classList.remove("hidden");
+
+    fetch("/votes")
+        .then((r) => r.json())
+        .then((data) => {
+            const counts = Object.keys(data.counts || {});
+            const voters = Object.keys(data.individual || {});
+
+            renderList(
+                counts.length
+                    ? counts.map((target) => `${target} -> ${data.counts[target]}`)
+                    : ["No votes yet"],
+                "liveVoteCounts"
+            );
+
+            renderList(
+                voters.length
+                    ? voters.map((voter) => `${voter} -> ${data.individual[voter]}`)
+                    : ["No votes submitted yet"],
+                "liveVoteDetails"
+            );
+        });
+}
+
+function hideLiveVotes() {
+    document.getElementById("liveVoteBox").classList.add("hidden");
+    renderList([], "liveVoteCounts");
+    renderList([], "liveVoteDetails");
+}
+
+function updatePoliceReportsVisibility() {
+    const policeBox = document.getElementById("policeBox");
+    if (currentRole === "Police") {
+        policeBox.classList.remove("hidden");
+    } else {
+        policeBox.classList.add("hidden");
+        renderList([], "reports");
+    }
+}
+
+function showBanner(message) {
+    document.getElementById("waitingBox").innerHTML =
+        `<div class="dead-banner">${message}</div>`;
+}
+
+function leaveGameSilently() {
+    if (!joinedGame || !playerName) {
+        return;
+    }
+
+    const payload = JSON.stringify({ name: playerName });
+    navigator.sendBeacon("/leave", new Blob([payload], { type: "application/json" }));
+}
+
 function submitAction() {
     const target = document.getElementById("target").value;
     selectedAction = target;
@@ -303,6 +387,8 @@ function resetUI() {
     document.getElementById("voteBox").innerHTML = "";
     document.getElementById("suggestBox").innerHTML = "";
     document.getElementById("deadBanner").innerHTML = "";
+    hideLiveVotes();
+    updatePoliceReportsVisibility();
 }
 
 setInterval(updateUI, 2000);

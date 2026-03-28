@@ -5,7 +5,6 @@ document.getElementById("startBtn").addEventListener("click", startGame);
 document.getElementById("resolveBtn").addEventListener("click", resolveNight);
 document.getElementById("startVoteBtn").addEventListener("click", startVoting);
 document.getElementById("endVoteBtn").addEventListener("click", endVoting);
-document.getElementById("nextBtn").addEventListener("click", nextRound);
 document.getElementById("endGameBtn").addEventListener("click", endGame);
 
 function safeFetch(url, options = {}) {
@@ -65,14 +64,6 @@ function endVoting() {
     safeFetch("/end_vote", { method: "POST" }).then((data) => {
         if (data) {
             setStatus("Voting ended. Eliminated: " + (data.eliminated || "Nobody"));
-        }
-    });
-}
-
-function nextRound() {
-    safeFetch("/next_round", { method: "POST" }).then((data) => {
-        if (data) {
-            setStatus("Next round started");
         }
     });
 }
@@ -148,6 +139,9 @@ function loadGameState() {
             document.getElementById("gameInfo").innerText =
                 `Round: ${state.round} | Phase: ${state.phase}`;
 
+            renderList(state.alive || [], "alivePlayers", "No alive players");
+            renderList(state.eliminated || [], "deadPlayers", "No dead players");
+
             if (state.phase === "waiting") {
                 document.getElementById("winner").innerText = "";
             }
@@ -202,7 +196,20 @@ function updateButtons(phase) {
     document.getElementById("resolveBtn").disabled = phase !== "night";
     document.getElementById("startVoteBtn").disabled = phase !== "day";
     document.getElementById("endVoteBtn").disabled = phase !== "voting";
-    document.getElementById("nextBtn").disabled = phase !== "day";
+}
+
+function renderList(items, id, emptyMessage = "-") {
+    const list = document.getElementById(id);
+    list.innerHTML = "";
+
+    if (!items.length) {
+        list.innerHTML = `<li>${emptyMessage}</li>`;
+        return;
+    }
+
+    items.forEach((item) => {
+        list.innerHTML += `<li>${item}</li>`;
+    });
 }
 
 function endGame() {
