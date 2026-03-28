@@ -138,16 +138,28 @@ From the project folder:
 python app.py
 ```
 
-The app starts on:
+The app listens on port `5000` for the host machine and other devices on the same local network.
+
+You can open it on the host machine with:
 
 ```text
 http://127.0.0.1:5000
 ```
 
+Other players on the same Wi-Fi or LAN should use the host computer's local IP address, for example:
+
+```text
+http://192.168.1.25:5000
+```
+
 ### Open The Pages
 
-- Player page: `http://127.0.0.1:5000/`
-- Host page: `http://127.0.0.1:5000/host`
+- On the host computer:
+  - Player page: `http://127.0.0.1:5000/`
+  - Host page: `http://127.0.0.1:5000/host`
+- On other devices in the same local network:
+  - Player page: `http://HOST_LOCAL_IP:5000/`
+  - Host page: `http://HOST_LOCAL_IP:5000/host`
 
 ## Quick Start
 
