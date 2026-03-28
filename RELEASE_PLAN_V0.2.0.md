@@ -6,6 +6,13 @@ This document outlines the planned gameplay and technical changes for the next r
 
 Move from a manually controlled host page to a lobby-driven game flow where all players join the same lobby, mark themselves ready, and the game starts automatically once everyone is ready.
 
+The current codebase already includes some supporting groundwork:
+
+- modular backend structure
+- player leave handling
+- live player state on host and player screens
+- automated regression tests
+
 ## Planned Player Experience
 
 Before a game starts:
@@ -55,7 +62,7 @@ When the game ends:
 ### End Game
 
 - Reset match state without removing the lobby system
-- Preserve joined players unless they explicitly leave
+- Decide whether joined players should remain in the lobby or be cleared on end-game
 - Clear ready state for the next game
 
 ## Suggested Technical Approach
@@ -133,6 +140,7 @@ This may allow the current `host.html` page to be removed entirely, or reduced t
 - Duplicate player names
 - A dead player attempting controller actions
 - Lobby state and match state getting mixed during reset
+- Reconciling current `/reset` behavior with the future lobby-ready flow
 
 ## Recommended Implementation Order
 

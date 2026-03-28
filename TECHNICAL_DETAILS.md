@@ -43,6 +43,12 @@ Because all state is kept in memory:
 - the game is intended for a single shared session
 - it is not yet designed for multiple rooms or multiple simultaneous games
 
+The current reset behavior is:
+
+- `/reset` clears the active match state
+- joined players remain in the player list
+- players may also leave individually through `/leave`
+
 ## Game Phases
 
 The app uses these phases:
@@ -95,6 +101,7 @@ When `/resolve` runs:
 - if Mafia votes differ, one of those voted targets is chosen randomly
 - if the chosen target is not saved by the Doctor, that player is eliminated
 - Police reports are updated with either `is Mafia` or `is NOT Mafia`
+- Police reports are appended, so the Police player keeps a history across rounds
 
 ## Voting Logic
 
@@ -103,6 +110,7 @@ During the `voting` phase:
 - alive players vote through `/vote`
 - self-voting is blocked
 - votes can be changed before voting ends
+- live vote counts and individual voter choices are available through `/votes`
 
 When `/end_vote` runs:
 
@@ -136,17 +144,19 @@ The player page:
 - loads the player's role after the game starts
 - shows alive and dead players
 - shows role-specific actions
-- shows police reports for the Police role
+- shows police reports only for the Police role
+- shows live voting data only during the `voting` phase
 - shows a dead banner after elimination
+- attempts to notify the server when a player leaves the page
 
 ### Host Page
 
 The host page:
 
 - polls the server every 2 seconds
-- displays players, roles, night actions, suggestions, live votes, and vote history
+- displays players, alive players, dead players, roles, night actions, suggestions, live votes, and vote history
 - enables or disables buttons based on the current phase
-- provides controls to start, resolve, vote, advance, and reset the game
+- provides controls to start, resolve, vote, and reset the game
 
 ## Main Routes
 
@@ -155,6 +165,7 @@ Core gameplay routes include:
 - `/`: player page
 - `/host`: host page
 - `/join`: join the lobby
+- `/leave`: remove a player from the current session
 - `/players`: list joined players
 - `/start`: start the game
 - `/role/<name>`: fetch one player's role
@@ -180,11 +191,13 @@ Core gameplay routes include:
 - No protection against players opening the host page
 - No hidden server-side separation between host and player access
 - No explicit tie-breaker rule during voting
+- Player disconnect handling relies on browser unload behavior and is not a full heartbeat system
 
 ## Suggested Future Improvements
 
 - Add room-based multiplayer support
 - Add host authentication
+- Add heartbeat-based presence tracking
 - Add clearer tie-handling rules
 - Add deployment configuration
 - Add tests for role assignment, voting, and winner detection
