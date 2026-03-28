@@ -118,6 +118,36 @@ class MafiaGameTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json(), [])
 
+    def test_police_reports_persist_across_multiple_rounds(self):
+        self.start_four_player_game()
+        roles = self.client.get("/all_roles").get_json()
+
+        mafia = next(name for name, role in roles.items() if role == "Mafia")
+        doctor = next(name for name, role in roles.items() if role == "Doctor")
+        police = next(name for name, role in roles.items() if role == "Police")
+        villager = next(name for name, role in roles.items() if role == "Villager")
+
+        self.client.post("/action", json={"name": mafia, "target": villager})
+        self.client.post("/action", json={"name": doctor, "target": doctor})
+        self.client.post("/action", json={"name": police, "target": mafia})
+        self.client.post("/resolve")
+
+        self.client.post("/start_voting")
+        self.client.post("/vote", json={"name": mafia, "target": villager})
+        self.client.post("/vote", json={"name": doctor, "target": mafia})
+        self.client.post("/vote", json={"name": police, "target": villager})
+        self.client.post("/vote", json={"name": villager, "target": mafia})
+        self.client.post("/end_vote")
+
+        self.client.post("/action", json={"name": doctor, "target": doctor})
+        self.client.post("/action", json={"name": police, "target": villager})
+        self.client.post("/resolve")
+
+        reports = self.client.get(f"/police_reports/{police}").get_json()
+        self.assertEqual(len(reports), 2)
+        self.assertEqual(reports[0], f"{mafia} is Mafia")
+        self.assertEqual(reports[1], f"{villager} is NOT Mafia")
+
     def test_mafia_cannot_target_fellow_mafia(self):
         self.join_players(["A", "B", "C", "D", "E", "F"])
         self.client.post("/start")
