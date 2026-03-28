@@ -6,6 +6,29 @@ This project is designed for simple local play. The host controls the flow of th
 
 For code structure, routes, and implementation details, see [TECHNICAL_DETAILS.md](TECHNICAL_DETAILS.md).
 
+## Project Structure
+
+```text
+mafia-game/
+├─ app.py
+├─ requirements.txt
+├─ mafia_game/
+│  ├─ __init__.py
+│  ├─ routes.py
+│  ├─ services.py
+│  └─ state.py
+├─ templates/
+│  ├─ index.html
+│  └─ host.html
+├─ static/
+│  ├─ css/
+│  │  ├─ host.css
+│  │  └─ player.css
+│  └─ js/
+│     ├─ host.js
+│     └─ player.js
+```
+
 ## Game Overview
 
 Mafia is a social deduction game where players are secretly assigned roles. The Mafia try to eliminate everyone else without being discovered, while the Villagers use discussion and voting to find and remove the Mafia.
@@ -124,10 +147,10 @@ python -m venv venv
 venv\Scripts\activate
 ```
 
-Install Flask:
+Install dependencies:
 
 ```powershell
-pip install flask
+pip install -r requirements.txt
 ```
 
 ### Run The App
@@ -174,3 +197,4 @@ http://192.168.1.25:5000
 - This project currently stores game state in memory, so restarting the server resets the game.
 - The game is best suited for casual local sessions controlled by one host.
 - Player names must be unique within a game session.
+- The backend is organized into separate modules for app creation, routes, state storage, and game logic.

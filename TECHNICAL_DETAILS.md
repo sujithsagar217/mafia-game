@@ -10,13 +10,23 @@ This document explains the current structure and logic of the Mafia Game project
 
 ## Project Structure
 
-- `app.py`: Flask server, game state, role assignment, actions, voting, reset logic
+- `app.py`: thin entrypoint that creates and runs the Flask app
+- `mafia_game/__init__.py`: Flask app factory and template/static configuration
+- `mafia_game/routes.py`: HTTP routes and JSON responses
+- `mafia_game/services.py`: game rules and state transitions
+- `mafia_game/state.py`: in-memory store and state models
 - `templates/index.html`: player interface
 - `templates/host.html`: host control panel
+- `static/css/player.css`: player page styles
+- `static/css/host.css`: host page styles
+- `static/js/player.js`: player page behavior
+- `static/js/host.js`: host page behavior
 
 ## Main Runtime Model
 
-The game uses module-level global variables in `app.py` to keep track of:
+The game keeps runtime state in an in-memory `GameStore` object in `mafia_game/state.py`.
+
+That store tracks:
 
 - registered players
 - assigned roles
@@ -108,7 +118,7 @@ Important current behavior:
 
 ## Winner Detection
 
-The helper `check_winner()` is called after major eliminations.
+The helper `check_winner()` in `mafia_game/services.py` is called after major eliminations.
 
 Rules:
 
@@ -170,11 +180,9 @@ Core gameplay routes include:
 - No protection against players opening the host page
 - No hidden server-side separation between host and player access
 - No explicit tie-breaker rule during voting
-- No packaged dependency list yet
 
 ## Suggested Future Improvements
 
-- Add `requirements.txt`
 - Add room-based multiplayer support
 - Add host authentication
 - Add clearer tie-handling rules
