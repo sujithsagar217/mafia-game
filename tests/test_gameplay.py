@@ -36,9 +36,15 @@ class MafiaGameTestCase(unittest.TestCase):
             response = self.client.post("/join", json={"name": name})
             self.assertEqual(response.status_code, 200)
 
+    def login_host(self):
+        response = self.client.post("/host/login", json={"access_code": "mafia-host"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {"authorized": True})
+
     def start_four_player_game(self):
         players = ["A", "B", "C", "D"]
         self.join_players(players)
+        self.login_host()
         response = self.client.post("/start")
         self.assertEqual(response.status_code, 200)
         return response
@@ -60,9 +66,66 @@ class MafiaGameTestCase(unittest.TestCase):
 
     def test_cannot_start_with_fewer_than_four_players(self):
         self.join_players(["A", "B", "C"])
+        self.login_host()
         response = self.client.post("/start")
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.get_json()["error"], "Minimum 4 players required")
+
+    def test_host_login_is_required_for_host_actions(self):
+        self.join_players(["A", "B", "C", "D"])
+        response = self.client.post("/start")
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.get_json()["error"], "Host access required")
+
+    def test_host_login_rejects_invalid_access_code(self):
+        response = self.client.post("/host/login", json={"access_code": "wrong-code"})
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.get_json()["error"], "Invalid host access code")
+
+    def test_host_status_reflects_session_auth(self):
+        response = self.client.get("/host/status")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {"authorized": False})
+
+        self.login_host()
+
+        response = self.client.get("/host/status")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {"authorized": True})
+
+    def test_fresh_client_does_not_inherit_host_session(self):
+        self.login_host()
+
+        other_client = self.app.test_client()
+        response = other_client.get("/host/status")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {"authorized": False})
+
+    def test_sensitive_host_data_is_blocked_without_host_login(self):
+        self.start_four_player_game()
+
+        other_client = self.app.test_client()
+        for path in ["/all_roles", "/actions", "/suggestions", "/vote_history"]:
+            response = other_client.get(path)
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(response.get_json()["error"], "Host access required")
+
+    def test_next_round_is_blocked_without_host_login(self):
+        self.join_players(["A", "B", "C", "D"])
+        response = self.client.post("/next_round")
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.get_json()["error"], "Host access required")
+
+    def test_next_round_succeeds_for_host_session(self):
+        self.start_four_player_game()
+
+        response = self.client.post("/next_round")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {"message": "next"})
+
+        game_state = self.client.get("/game_state").get_json()
+        self.assertEqual(game_state["phase"], "night")
+        self.assertEqual(game_state["round"], 2)
 
     def test_role_distribution_for_four_players(self):
         self.start_four_player_game()
@@ -76,6 +139,7 @@ class MafiaGameTestCase(unittest.TestCase):
 
     def test_role_distribution_for_six_players(self):
         self.join_players(["A", "B", "C", "D", "E", "F"])
+        self.login_host()
         response = self.client.post("/start")
         self.assertEqual(response.status_code, 200)
         roles = self.client.get("/all_roles").get_json()
@@ -84,6 +148,37 @@ class MafiaGameTestCase(unittest.TestCase):
         self.assertEqual(sum(role == "Doctor" for role in roles.values()), 1)
         self.assertEqual(sum(role == "Police" for role in roles.values()), 1)
         self.assertEqual(sum(role == "Villager" for role in roles.values()), 2)
+
+    def test_role_endpoint_includes_mafia_team_only_for_mafia_player(self):
+        self.join_players(["A", "B", "C", "D", "E", "F"])
+        self.login_host()
+        self.client.post("/start")
+        roles = self.client.get("/all_roles").get_json()
+
+        mafia_players = [name for name, role in roles.items() if role == "Mafia"]
+        mafia_response = self.client.get(f"/role/{mafia_players[0]}")
+        self.assertEqual(mafia_response.status_code, 200)
+        self.assertEqual(mafia_response.get_json()["role"], "Mafia")
+        self.assertEqual(mafia_response.get_json()["mafia_team"], [mafia_players[1]])
+
+        non_mafia = next(name for name, role in roles.items() if role != "Mafia")
+        non_mafia_response = self.client.get(f"/role/{non_mafia}")
+        self.assertEqual(non_mafia_response.status_code, 200)
+        self.assertNotIn("mafia_team", non_mafia_response.get_json())
+
+    def test_role_endpoint_does_not_leak_other_players_roles(self):
+        self.start_four_player_game()
+        roles = self.client.get("/all_roles").get_json()
+        police = next(name for name, role in roles.items() if role == "Police")
+        mafia = next(name for name, role in roles.items() if role == "Mafia")
+
+        response = self.client.get(f"/role/{mafia}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {"role": "Mafia", "mafia_team": []})
+
+        other_response = self.client.get(f"/role/{police}")
+        self.assertEqual(other_response.status_code, 200)
+        self.assertEqual(other_response.get_json(), {"role": "Police"})
 
     def test_doctor_save_and_police_report(self):
         self.start_four_player_game()
@@ -150,6 +245,7 @@ class MafiaGameTestCase(unittest.TestCase):
 
     def test_mafia_cannot_target_fellow_mafia(self):
         self.join_players(["A", "B", "C", "D", "E", "F"])
+        self.login_host()
         self.client.post("/start")
         roles = self.client.get("/all_roles").get_json()
         mafia_players = [name for name, role in roles.items() if role == "Mafia"]
@@ -253,6 +349,33 @@ class MafiaGameTestCase(unittest.TestCase):
         self.assertEqual(votes_after["counts"], {})
         self.assertEqual(votes_after["individual"], {})
 
+        history = self.client.get("/vote_history").get_json()
+        self.assertFalse(history[-1]["tied"])
+        self.assertEqual(history[-1]["top_targets"], [target])
+
+    def test_tie_vote_results_in_no_elimination(self):
+        self.start_four_player_game()
+        self.client.post("/resolve")
+        self.client.post("/start_voting")
+
+        self.client.post("/vote", json={"name": "A", "target": "C"})
+        self.client.post("/vote", json={"name": "B", "target": "C"})
+        self.client.post("/vote", json={"name": "C", "target": "A"})
+        self.client.post("/vote", json={"name": "D", "target": "A"})
+
+        response = self.client.post("/end_vote")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["message"], "Tie vote - nobody eliminated")
+        self.assertIsNone(response.get_json()["eliminated"])
+
+        state = self.client.get("/game_state").get_json()
+        self.assertEqual(state["phase"], "night")
+        self.assertEqual(sorted(state["alive"]), ["A", "B", "C", "D"])
+
+        history = self.client.get("/vote_history").get_json()
+        self.assertTrue(history[-1]["tied"])
+        self.assertEqual(sorted(history[-1]["top_targets"]), ["A", "C"])
+
     def test_end_vote_without_votes_returns_no_votes_message(self):
         self.start_four_player_game()
         self.client.post("/resolve")
@@ -337,6 +460,7 @@ class MafiaGameTestCase(unittest.TestCase):
 
     def test_mafia_win_when_mafia_count_reaches_parity(self):
         self.join_players(["A", "B", "C", "D", "E", "F"])
+        self.login_host()
         self.client.post("/start")
         roles = self.client.get("/all_roles").get_json()
         mafia_players = [name for name, role in roles.items() if role == "Mafia"]
@@ -349,6 +473,37 @@ class MafiaGameTestCase(unittest.TestCase):
         response = self.client.get("/game_result")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["winner"], "Mafia")
+
+    def test_heartbeat_keeps_player_active(self):
+        self.join_players(["A"])
+        response = self.client.post("/heartbeat", json={"name": "A"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {"ok": True})
+
+    def test_unknown_player_heartbeat_is_rejected(self):
+        response = self.client.post("/heartbeat", json={"name": "Ghost"})
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.get_json()["error"], "Unknown player")
+
+    def test_heartbeat_preserves_active_player_while_pruning_stale_player(self):
+        self.join_players(["A", "B"])
+        store.last_seen["A"] = 0
+
+        heartbeat = self.client.post("/heartbeat", json={"name": "B"})
+        self.assertEqual(heartbeat.status_code, 200)
+
+        response = self.client.get("/players")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), ["B"])
+
+    def test_inactive_players_are_pruned_by_heartbeat_timeout(self):
+        self.join_players(["A", "B"])
+        store.last_seen["A"] = 0
+        store.last_seen["B"] = 0
+
+        response = self.client.get("/players")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), [])
 
 
 if __name__ == "__main__":

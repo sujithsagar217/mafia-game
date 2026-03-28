@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from flask import Blueprint, jsonify, render_template, request
+from functools import wraps
+
+from flask import Blueprint, current_app, jsonify, render_template, request, session
 
 from .services import GameService
 from .state import GameStore
@@ -15,18 +17,54 @@ def error_response(message: str, status_code: int = 400):
     return jsonify({"error": message}), status_code
 
 
+def prune_inactive_players() -> None:
+    service.prune_inactive_players(current_app.config["PLAYER_HEARTBEAT_TIMEOUT_SECONDS"])
+
+
+def require_host_access(route_func):
+    @wraps(route_func)
+    def wrapper(*args, **kwargs):
+        if not session.get("is_host"):
+            return error_response("Host access required", 403)
+        return route_func(*args, **kwargs)
+
+    return wrapper
+
+
 @game_bp.route("/")
 def home():
+    prune_inactive_players()
     return render_template("index.html")
 
 
 @game_bp.route("/host")
 def host():
+    prune_inactive_players()
     return render_template("host.html")
+
+
+@game_bp.route("/host/status")
+def host_status():
+    prune_inactive_players()
+    return jsonify({"authorized": bool(session.get("is_host"))})
+
+
+@game_bp.route("/host/login", methods=["POST"])
+def host_login():
+    payload = request.get_json(silent=True) or {}
+    access_code = payload.get("access_code", "")
+
+    if access_code != current_app.config["HOST_ACCESS_CODE"]:
+        session["is_host"] = False
+        return error_response("Invalid host access code", 403)
+
+    session["is_host"] = True
+    return jsonify({"authorized": True})
 
 
 @game_bp.route("/join", methods=["POST"])
 def join():
+    prune_inactive_players()
     if store.game_started:
         return error_response("Game started")
 
@@ -36,6 +74,7 @@ def join():
 
 @game_bp.route("/leave", methods=["POST"])
 def leave():
+    prune_inactive_players()
     payload = request.get_json(silent=True) or {}
     name = payload.get("name")
 
@@ -47,11 +86,26 @@ def leave():
 
 @game_bp.route("/players")
 def get_players():
+    prune_inactive_players()
     return jsonify(store.players)
 
 
+@game_bp.route("/heartbeat", methods=["POST"])
+def heartbeat():
+    payload = request.get_json(silent=True) or {}
+    name = payload.get("name")
+
+    if not service.touch_player(name):
+        return error_response("Unknown player", 404)
+
+    prune_inactive_players()
+    return jsonify({"ok": True})
+
+
 @game_bp.route("/start", methods=["POST"])
+@require_host_access
 def start_game():
+    prune_inactive_players()
     ok, error = service.start_game()
     if not ok:
         return error_response(error)
@@ -60,23 +114,36 @@ def start_game():
 
 @game_bp.route("/role/<name>")
 def get_role(name: str):
+    prune_inactive_players()
     if not store.game_started or name not in store.roles:
         return jsonify({"role": None})
-    return jsonify({"role": store.roles[name]})
+    role = store.roles[name]
+    response = {"role": role}
+    if role == "Mafia":
+        response["mafia_team"] = [
+            player
+            for player, player_role in store.roles.items()
+            if player_role == "Mafia" and player != name
+        ]
+    return jsonify(response)
 
 
 @game_bp.route("/all_roles")
+@require_host_access
 def all_roles():
+    prune_inactive_players()
     return jsonify(store.roles)
 
 
 @game_bp.route("/game_state")
 def get_game_state():
+    prune_inactive_players()
     return jsonify(store.game_state.to_dict())
 
 
 @game_bp.route("/action", methods=["POST"])
 def submit_action():
+    prune_inactive_players()
     data = request.get_json(force=True)
     ok, error = service.submit_night_action(data["name"], data["target"])
     if not ok:
@@ -86,6 +153,7 @@ def submit_action():
 
 @game_bp.route("/suggest", methods=["POST"])
 def suggest():
+    prune_inactive_players()
     data = request.get_json(force=True)
     ok, error = service.submit_mafia_suggestion(data["name"], data["target"])
     if not ok:
@@ -94,12 +162,16 @@ def suggest():
 
 
 @game_bp.route("/suggestions")
+@require_host_access
 def get_suggestions():
+    prune_inactive_players()
     return jsonify(store.mafia_suggestions)
 
 
 @game_bp.route("/actions")
+@require_host_access
 def get_actions():
+    prune_inactive_players()
     return jsonify(
         {
             "doctor": store.actions["doctor"],
@@ -110,7 +182,9 @@ def get_actions():
 
 
 @game_bp.route("/resolve", methods=["POST"])
+@require_host_access
 def resolve_night():
+    prune_inactive_players()
     ok, error, eliminated = service.resolve_night()
     if not ok:
         return error_response(error)
@@ -118,7 +192,9 @@ def resolve_night():
 
 
 @game_bp.route("/start_voting", methods=["POST"])
+@require_host_access
 def start_voting():
+    prune_inactive_players()
     ok, error = service.start_voting()
     if not ok:
         return error_response(error)
@@ -127,6 +203,7 @@ def start_voting():
 
 @game_bp.route("/vote", methods=["POST"])
 def vote():
+    prune_inactive_players()
     data = request.get_json(force=True)
     ok, error = service.submit_vote(data["name"], data["target"])
     if not ok:
@@ -136,43 +213,57 @@ def vote():
 
 @game_bp.route("/votes")
 def get_votes():
+    prune_inactive_players()
     return jsonify({"counts": store.votes, "individual": store.voted})
 
 
 @game_bp.route("/end_vote", methods=["POST"])
+@require_host_access
 def end_vote():
+    prune_inactive_players()
     if not store.votes:
         return jsonify({"message": "No votes"})
 
-    ok, error, eliminated = service.end_vote()
+    ok, error, eliminated, tied = service.end_vote()
     if not ok:
         return error_response(error)
 
-    return jsonify({"eliminated": eliminated})
+    if tied:
+        return jsonify({"eliminated": None, "message": "Tie vote - nobody eliminated"})
+
+    return jsonify({"eliminated": eliminated, "message": "Vote resolved"})
 
 
 @game_bp.route("/vote_history")
+@require_host_access
 def get_vote_history():
+    prune_inactive_players()
     return jsonify(store.vote_history)
 
 
 @game_bp.route("/reset", methods=["POST"])
+@require_host_access
 def reset_game():
+    prune_inactive_players()
     service.reset_game()
     return jsonify({"message": "Game reset"})
 
 
 @game_bp.route("/game_result")
 def game_result():
+    prune_inactive_players()
     return jsonify({"winner": store.game_state.winner})
 
 
 @game_bp.route("/police_reports/<name>")
 def get_reports(name: str):
+    prune_inactive_players()
     return jsonify(store.police_reports.get(name, []))
 
 
 @game_bp.route("/next_round", methods=["POST"])
+@require_host_access
 def next_round():
+    prune_inactive_players()
     service.next_round()
     return jsonify({"message": "next"})

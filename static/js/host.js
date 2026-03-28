@@ -1,11 +1,13 @@
 let currentPhase = "";
 let loading = false;
+let hostAuthorized = false;
 
 document.getElementById("startBtn").addEventListener("click", startGame);
 document.getElementById("resolveBtn").addEventListener("click", resolveNight);
 document.getElementById("startVoteBtn").addEventListener("click", startVoting);
 document.getElementById("endVoteBtn").addEventListener("click", endVoting);
 document.getElementById("endGameBtn").addEventListener("click", endGame);
+document.getElementById("hostLoginBtn").addEventListener("click", loginHost);
 
 function safeFetch(url, options = {}) {
     if (loading) {
@@ -36,6 +38,48 @@ function setStatus(message) {
     document.getElementById("status").innerText = message;
 }
 
+function setAuthStatus(message) {
+    document.getElementById("authStatus").innerText = message;
+}
+
+function updateHostAccessUi() {
+    document.getElementById("hostAuthPanel").classList.toggle("hidden", hostAuthorized);
+    document.getElementById("hostPanel").classList.toggle("hidden", !hostAuthorized);
+}
+
+function loginHost() {
+    const accessCode = document.getElementById("hostAccessCode").value.trim();
+
+    fetch("/host/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ access_code: accessCode })
+    })
+        .then((response) =>
+            response.json().then((data) => ({
+                ok: response.ok,
+                data
+            }))
+        )
+        .then(({ ok, data }) => {
+            hostAuthorized = ok && Boolean(data.authorized);
+            updateHostAccessUi();
+            setAuthStatus(hostAuthorized ? "" : (data.error || "Access denied"));
+            if (hostAuthorized) {
+                loadAllHostData();
+            }
+        });
+}
+
+function loadHostStatus() {
+    fetch("/host/status")
+        .then((response) => response.json())
+        .then((data) => {
+            hostAuthorized = Boolean(data.authorized);
+            updateHostAccessUi();
+        });
+}
+
 function startGame() {
     safeFetch("/start", { method: "POST" }).then((data) => {
         if (data) {
@@ -63,7 +107,7 @@ function startVoting() {
 function endVoting() {
     safeFetch("/end_vote", { method: "POST" }).then((data) => {
         if (data) {
-            setStatus("Voting ended. Eliminated: " + (data.eliminated || "Nobody"));
+            setStatus(data.message || ("Voting ended. Eliminated: " + (data.eliminated || "Nobody")));
         }
     });
 }
@@ -224,6 +268,14 @@ function endGame() {
 }
 
 setInterval(() => {
+    if (!hostAuthorized) {
+        return;
+    }
+
+    loadAllHostData();
+}, 2000);
+
+function loadAllHostData() {
     loadPlayers();
     loadRoles();
     loadActions();
@@ -231,4 +283,6 @@ setInterval(() => {
     loadGameState();
     loadVotes();
     loadVoteHistory();
-}, 2000);
+}
+
+loadHostStatus();

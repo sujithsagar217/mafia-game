@@ -29,6 +29,8 @@ Current work completed after the initial release:
 - Host panel alive and dead player lists
 - Player leave handling for closed tabs and manual disconnect cleanup
 - Mid-game join rejection handling in the player UI
+- Host access code flow with session-based host authorization
+- Heartbeat endpoint and stale-player pruning
 - Simulation script in `simulate_game.py`
 - Automated regression suite in `tests/` with `run_tests.py`
 
@@ -36,6 +38,8 @@ Current work completed after the initial release:
 
 - Removed the unused `Next Round` button from the host panel
 - Police reports are shown only to the Police player
+- Sensitive host-only data endpoints now require host authorization
+- Tie votes now explicitly eliminate nobody and advance to the next round
 - Documentation updated to match the modular backend and testing workflow
 
 ## [0.1.0] - 2026-03-29

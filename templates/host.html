@@ -9,6 +9,15 @@
 <body>
 
 <main class="page">
+    <section id="hostAuthPanel" class="panel hero">
+        <h2>Host Access</h2>
+        <p class="subtitle">Enter the host access code to unlock host controls.</p>
+        <input id="hostAccessCode" type="password" placeholder="Enter host access code">
+        <button id="hostLoginBtn" type="button">Unlock Host Panel</button>
+        <h3 id="authStatus"></h3>
+    </section>
+
+    <section id="hostPanel" class="panel-group hidden">
     <section class="panel hero">
         <h2>Host Control Panel</h2>
         <p class="subtitle">Manage rounds, voting, and game resets from one place.</p>
@@ -67,6 +76,7 @@
     <section class="panel">
         <h3>Vote History</h3>
         <ul id="voteHistory"></ul>
+    </section>
     </section>
 </main>
 

@@ -43,12 +43,14 @@ This version includes these roles:
 Current gameplay features include:
 
 - Host control panel for phase management
+- Host access-code gate before host controls become available
 - Live voting data for all players during the voting phase
 - Police investigation history visible only to the Police player
 - Alive and dead player tracking on both player and host screens
 - Automatic round progression after voting ends
 - Mid-game join protection
-- Player disconnect handling through a leave flow
+- Tie votes explicitly eliminate nobody and move the game to the next round
+- Player disconnect handling through unload-based leave plus heartbeat cleanup
 
 ## Player Count
 

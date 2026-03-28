@@ -37,6 +37,7 @@ class GameStore:
     votes: Dict[str, int] = field(default_factory=dict)
     voted: Dict[str, str] = field(default_factory=dict)
     vote_history: List[dict] = field(default_factory=list)
+    last_seen: Dict[str, float] = field(default_factory=dict)
 
     def reset_match_state(self) -> None:
         self.roles = {}

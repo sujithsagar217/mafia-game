@@ -115,14 +115,16 @@ During the `voting` phase:
 When `/end_vote` runs:
 
 - the player with the highest vote count is eliminated
+- if multiple players tie for the highest vote count, nobody is eliminated
 - vote results are appended to `vote_history`
 - the round increments
 - phase returns to `night`
 
 Important current behavior:
 
-- ties are not handled explicitly
-- Python's `max()` is used, so the first highest entry encountered wins
+- ties are handled explicitly
+- tie rounds are recorded in `vote_history` with `tied: true` and the `top_targets`
+- a tie still advances the game to the next round without eliminating anyone
 
 ## Winner Detection
 
@@ -154,6 +156,7 @@ The player page:
 The host page:
 
 - polls the server every 2 seconds
+- requires a host access code before showing controls
 - displays players, alive players, dead players, roles, night actions, suggestions, live votes, and vote history
 - enables or disables buttons based on the current phase
 - provides controls to start, resolve, vote, and reset the game
@@ -168,36 +171,37 @@ Core gameplay routes include:
 - `/leave`: remove a player from the current session
 - `/players`: list joined players
 - `/start`: start the game
-- `/role/<name>`: fetch one player's role
-- `/all_roles`: fetch all roles
+- `/host/status`: check whether the current browser session is authorized as host
+- `/host/login`: enable host controls for the current browser session
+- `/heartbeat`: keep a joined player marked as active
+- `/role/<name>`: fetch one player's role and, for Mafia players, their teammates
+- `/all_roles`: fetch all roles for the authorized host session
 - `/game_state`: fetch current round, phase, alive list, dead list, and winner
 - `/action`: submit a night action
 - `/suggest`: submit a Mafia suggestion
-- `/suggestions`: read Mafia suggestions
-- `/actions`: read submitted night actions
-- `/resolve`: resolve the night
-- `/start_voting`: begin voting
+- `/suggestions`: read Mafia suggestions for the authorized host session
+- `/actions`: read submitted night actions for the authorized host session
+- `/resolve`: resolve the night for the authorized host session
+- `/start_voting`: begin voting for the authorized host session
 - `/vote`: submit or update a vote
 - `/votes`: read vote counts and voter choices
-- `/end_vote`: end voting and eliminate a player
-- `/vote_history`: read prior voting rounds
+- `/end_vote`: end voting and eliminate a player, or resolve a tie with no elimination
+- `/vote_history`: read prior voting rounds for the authorized host session
 - `/police_reports/<name>`: read police investigation results
-- `/reset`: reset the game
+- `/reset`: reset the game for the authorized host session
 
 ## Current Limitations
 
 - No persistent database
-- No authentication or room code system
-- No protection against players opening the host page
-- No hidden server-side separation between host and player access
-- No explicit tie-breaker rule during voting
-- Player disconnect handling relies on browser unload behavior and is not a full heartbeat system
+- Host access uses a simple shared access code and session flag, not a full account system
+- The host page can still be opened by anyone, but the controls and sensitive data stay locked until host login succeeds
+- Presence tracking is heartbeat-based but still in-memory, so it resets when the Flask process restarts
+- There is still no room-based separation for multiple simultaneous games
 
 ## Suggested Future Improvements
 
 - Add room-based multiplayer support
-- Add host authentication
-- Add heartbeat-based presence tracking
-- Add clearer tie-handling rules
+- Replace the shared host access code with a role-driven or lobby-driven controller flow
+- Persist presence and match state beyond a single server process
 - Add deployment configuration
 - Add tests for role assignment, voting, and winner detection

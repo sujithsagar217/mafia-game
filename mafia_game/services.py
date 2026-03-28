@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import time
 from typing import Optional, Tuple
 
 from .state import GameState, GameStore
@@ -13,6 +14,8 @@ class GameService:
     def add_player(self, name: Optional[str]) -> list[str]:
         if name and name not in self.store.players:
             self.store.players.append(name)
+        if name:
+            self.touch_player(name)
         return self.store.players
 
     def remove_player(self, name: Optional[str]) -> bool:
@@ -20,6 +23,7 @@ class GameService:
             return False
 
         self.store.players.remove(name)
+        self.store.last_seen.pop(name, None)
 
         role = self.store.roles.pop(name, None)
         self.store.police_reports.pop(name, None)
@@ -60,6 +64,28 @@ class GameService:
             self.check_winner()
 
         return True
+
+    def touch_player(self, name: Optional[str]) -> bool:
+        if not name or name not in self.store.players:
+            return False
+        self.store.last_seen[name] = time.time()
+        return True
+
+    def prune_inactive_players(self, timeout_seconds: int) -> list[str]:
+        if timeout_seconds <= 0:
+            return []
+
+        now = time.time()
+        inactive_players = [
+            player
+            for player in list(self.store.players)
+            if now - self.store.last_seen.get(player, now) > timeout_seconds
+        ]
+
+        for player in inactive_players:
+            self.remove_player(player)
+
+        return inactive_players
 
     def start_game(self) -> Tuple[bool, Optional[str]]:
         if len(self.store.players) < 4:
@@ -222,24 +248,34 @@ class GameService:
         self.store.votes[target] = self.store.votes.get(target, 0) + 1
         return True, None
 
-    def end_vote(self) -> Tuple[bool, Optional[str], Optional[str]]:
+    def end_vote(self) -> Tuple[bool, Optional[str], Optional[str], bool]:
         if self.store.game_state.phase != "voting":
-            return False, "Voting not active", None
+            return False, "Voting not active", None, False
 
         if not self.store.votes:
-            return True, None, None
+            return True, None, None, False
 
-        eliminated = max(self.store.votes, key=self.store.votes.get)
+        highest_vote_count = max(self.store.votes.values())
+        top_targets = [
+            target for target, count in self.store.votes.items() if count == highest_vote_count
+        ]
 
-        if eliminated in self.store.game_state.alive:
-            self.store.game_state.alive.remove(eliminated)
-            self.store.game_state.eliminated.append(eliminated)
+        tied = len(top_targets) > 1
+        eliminated = None
+
+        if not tied:
+            eliminated = top_targets[0]
+            if eliminated in self.store.game_state.alive:
+                self.store.game_state.alive.remove(eliminated)
+                self.store.game_state.eliminated.append(eliminated)
 
         self.store.vote_history.append(
             {
                 "round": self.store.game_state.round,
                 "votes": self.store.voted.copy(),
                 "eliminated": eliminated,
+                "tied": tied,
+                "top_targets": top_targets,
             }
         )
 
@@ -248,7 +284,7 @@ class GameService:
         self.store.game_state.round += 1
         self.store.game_state.phase = "night"
         self.check_winner()
-        return True, None, eliminated
+        return True, None, eliminated, tied
 
     def next_round(self) -> None:
         self.store.game_state.round += 1

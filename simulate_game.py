@@ -1,4 +1,5 @@
 import argparse
+import os
 import random
 from typing import Dict, List
 
@@ -67,6 +68,18 @@ def simulate_game(player_count: int, seed: int, max_rounds: int) -> int:
 
     print("\nJoined players:")
     print(client.get("/players").get_json())
+
+    host_access_code = app.config.get(
+        "HOST_ACCESS_CODE",
+        os.environ.get("HOST_ACCESS_CODE", "mafia-host"),
+    )
+    host_login_response = client.post(
+        "/host/login",
+        json={"access_code": host_access_code},
+    )
+    if host_login_response.status_code != 200:
+        print(f"Unable to log in as host: {host_login_response.get_json()}")
+        return 1
 
     start_response = client.post("/start")
     if start_response.status_code != 200:

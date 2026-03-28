@@ -13,6 +13,11 @@ body {
     gap: 16px;
 }
 
+.panel-group {
+    display: grid;
+    gap: 16px;
+}
+
 .panel {
     background: #161b22;
     border: 1px solid #2b3440;
@@ -54,6 +59,10 @@ button:disabled {
 
 button.danger {
     background: #d74c4c;
+}
+
+.hidden {
+    display: none;
 }
 
 .winner-text {

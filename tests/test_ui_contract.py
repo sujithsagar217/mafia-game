@@ -21,6 +21,9 @@ class UiContractTestCase(unittest.TestCase):
         html = response.get_data(as_text=True)
 
         self.assertEqual(response.status_code, 200)
+        self.assertIn('id="hostAuthPanel"', html)
+        self.assertIn('id="hostAccessCode"', html)
+        self.assertIn('id="hostPanel"', html)
         self.assertIn('id="alivePlayers"', html)
         self.assertIn('id="deadPlayers"', html)
         self.assertNotIn('id="nextBtn"', html)

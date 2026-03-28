@@ -1,7 +1,7 @@
 let playerName = "";
 let currentRole = null;
 let roleLoaded = false;
-let allRoles = {};
+let mafiaTeam = [];
 
 let currentPhase = "";
 let actionRendered = false;
@@ -11,6 +11,7 @@ let suggestRendered = false;
 let selectedVote = null;
 let selectedAction = null;
 let joinedGame = false;
+let heartbeatTimerId = null;
 
 document.getElementById("joinBtn").addEventListener("click", joinGame);
 window.addEventListener("pagehide", leaveGameSilently);
@@ -45,6 +46,7 @@ function joinGame() {
             document.getElementById("joinBtn").disabled = true;
             document.getElementById("waitingBox").innerHTML =
                 '<div class="waiting-banner">Joined successfully. Waiting for the host to start the game...</div>';
+            startHeartbeat();
         });
 }
 
@@ -58,7 +60,7 @@ function updateUI() {
         .then((state) => {
             if (state.phase === "waiting") {
                 roleLoaded = false;
-                allRoles = {};
+                mafiaTeam = [];
                 currentRole = null;
 
                 document.getElementById("winner").innerText = "";
@@ -75,14 +77,8 @@ function updateUI() {
                     .then((r) => r.json())
                     .then((data) => {
                         currentRole = data.role;
+                        mafiaTeam = data.mafia_team || [];
                         roleLoaded = true;
-                        renderRole();
-                    });
-
-                fetch("/all_roles")
-                    .then((r) => r.json())
-                    .then((data) => {
-                        allRoles = data;
                         renderRole();
                     });
             }
@@ -132,11 +128,8 @@ function renderRole() {
     updatePoliceReportsVisibility();
 
     if (currentRole === "Mafia") {
-        const team = Object.keys(allRoles).filter(
-            (player) => allRoles[player] === "Mafia" && player !== playerName
-        );
         document.getElementById("mafiaTeam").innerText =
-            team.length ? "Team: " + team.join(", ") : "";
+            mafiaTeam.length ? "Team: " + mafiaTeam.join(", ") : "";
     }
 }
 
@@ -159,7 +152,7 @@ function renderActions(state) {
     }
 
     if (currentRole === "Mafia") {
-        targets = targets.filter((player) => allRoles[player] !== "Mafia");
+        targets = targets.filter((player) => !mafiaTeam.includes(player));
     }
 
     if (!["Doctor", "Police", "Mafia"].includes(currentRole)) {
@@ -202,7 +195,7 @@ function renderSuggestions(state) {
 
     if (!suggestRendered) {
         let targets = state.alive.filter((player) => player !== playerName);
-        targets = targets.filter((player) => allRoles[player] !== "Mafia");
+        targets = targets.filter((player) => !mafiaTeam.includes(player));
 
         box.innerHTML = `
             <h3>Suggest Target</h3>
@@ -339,6 +332,27 @@ function leaveGameSilently() {
 
     const payload = JSON.stringify({ name: playerName });
     navigator.sendBeacon("/leave", new Blob([payload], { type: "application/json" }));
+}
+
+function sendHeartbeat() {
+    if (!joinedGame || !playerName) {
+        return;
+    }
+
+    fetch("/heartbeat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: playerName })
+    }).catch(() => {});
+}
+
+function startHeartbeat() {
+    if (heartbeatTimerId !== null) {
+        clearInterval(heartbeatTimerId);
+    }
+
+    sendHeartbeat();
+    heartbeatTimerId = window.setInterval(sendHeartbeat, 5000);
 }
 
 function submitAction() {
