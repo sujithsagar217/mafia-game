@@ -1,7 +1,7 @@
-from flask import Flask, request, jsonify, render_template
-import random
+from mafia_game import create_app
 
-app = Flask(__name__)
+app = create_app()
+"""
 
 players = []
 roles = {}
@@ -387,7 +387,7 @@ def next_round():
     game_state["phase"] = "night"
     return jsonify({"message": "next"})
 
-# ---------------- RUN ---------------- #
+"""
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

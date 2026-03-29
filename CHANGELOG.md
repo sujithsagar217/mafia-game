@@ -17,6 +17,31 @@ Planned improvements for the next release:
 - Return all players to the lobby after `End Game`
 - Require players to ready up again before the next match
 
+## [0.1.1] - Unreleased
+
+Current work completed after the initial release:
+
+### Added
+
+- Modular backend structure with `mafia_game/` app, routes, services, and state modules
+- Externalized frontend assets under `static/css` and `static/js`
+- Player-facing live voting display during the voting phase
+- Host panel alive and dead player lists
+- Player leave handling for closed tabs and manual disconnect cleanup
+- Mid-game join rejection handling in the player UI
+- Host access code flow with session-based host authorization
+- Heartbeat endpoint and stale-player pruning
+- Simulation script in `simulate_game.py`
+- Automated regression suite in `tests/` with `run_tests.py`
+
+### Changed
+
+- Removed the unused `Next Round` button from the host panel
+- Police reports are shown only to the Police player
+- Sensitive host-only data endpoints now require host authorization
+- Tie votes now explicitly eliminate nobody and advance to the next round
+- Documentation updated to match the modular backend and testing workflow
+
 ## [0.1.0] - 2026-03-29
 
 Initial playable release of the Flask-based Mafia game.

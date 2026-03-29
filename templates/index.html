@@ -1,61 +1,18 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<style>
-body {
-    font-family: Arial;
-    background: #111;
-    color: #fff;
-    padding: 15px;
-}
-h2, h3 { margin: 8px 0; }
-
-input, select, button {
-    width: 100%;
-    padding: 12px;
-    margin-top: 8px;
-    font-size: 16px;
-    border-radius: 8px;
-    border: none;
-}
-button { background: #ff4757; color: white; }
-
-.card {
-    background: #1e1e1e;
-    padding: 12px;
-    border-radius: 10px;
-    margin-top: 12px;
-}
-
-.dead-banner {
-    background: red;
-    padding: 12px;
-    text-align: center;
-    border-radius: 10px;
-    animation: pulse 1s infinite;
-}
-
-.waiting-banner {
-    background: #3498db;
-    padding: 12px;
-    text-align: center;
-    border-radius: 10px;
-}
-
-.selected-info { margin-top: 10px; color: #2ecc71; }
-
-</style>
+<title>Mafia Game</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/player.css') }}">
 </head>
-
 <body>
 
-<h2>🎮 Mafia Game</h2>
+<h2>Mafia Game</h2>
 
 <div class="card">
-    <input id="name" placeholder="Enter your name" />
-    <button id="joinBtn" onclick="joinGame()">Join</button>
+    <input id="name" placeholder="Enter your name">
+    <button id="joinBtn" type="button">Join</button>
 </div>
 
 <div id="waitingBox"></div>
@@ -63,334 +20,38 @@ button { background: #ff4757; color: white; }
 
 <div class="card">
     <h3 id="role"></h3>
-    <h3 id="mafiaTeam" style="color:#e74c3c;"></h3>
+    <h3 id="mafiaTeam" class="mafia-team"></h3>
     <h3 id="round"></h3>
     <h3 id="phase"></h3>
-    <h2 id="winner" style="color:yellow;"></h2>
+    <h2 id="winner" class="winner-text"></h2>
 </div>
 
 <div id="actionBox" class="card"></div>
 <div id="suggestBox" class="card"></div>
 <div id="voteBox" class="card"></div>
+<div id="liveVoteBox" class="card hidden">
+    <h3>Live Voting</h3>
+    <h4>Vote Counts</h4>
+    <ul id="liveVoteCounts"></ul>
+    <h4>Who Voted Whom</h4>
+    <ul id="liveVoteDetails"></ul>
+</div>
 
-<div class="card">
-    <h3>👮 Police Reports:</h3>
+<div id="policeBox" class="card hidden">
+    <h3>Police Reports</h3>
     <ul id="reports"></ul>
 </div>
 
 <div class="card">
-    <h3>🟢 Alive:</h3>
+    <h3>Alive</h3>
     <ul id="alive"></ul>
 </div>
 
 <div class="card">
-    <h3>🔴 Dead:</h3>
+    <h3>Dead</h3>
     <ul id="dead"></ul>
 </div>
 
-<script>
-let playerName = "";
-let currentRole = null;
-let roleLoaded = false;
-let allRoles = {};
-
-let currentPhase = "";
-let actionRendered = false;
-let voteRendered = false;
-let suggestRendered = false; // ✅ NEW
-
-let selectedVote = null;
-let selectedAction = null;
-
-// ---------------- JOIN ---------------- //
-
-function joinGame() {
-    playerName = document.getElementById("name").value;
-
-    fetch("/join", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ name: playerName })
-    }).then(() => {
-        document.getElementById("name").disabled = true;
-        document.getElementById("joinBtn").disabled = true;
-    });
-}
-
-// ---------------- MAIN LOOP ---------------- //
-
-function updateUI() {
-    if (!playerName) return;
-
-    fetch("/game_state")
-    .then(res => res.json())
-    .then(state => {
-
-        if (state.phase === "waiting") {
-            roleLoaded = false;
-            allRoles = {};
-            currentRole = null;
-
-            document.getElementById("winner").innerText = "";
-
-            resetUI();
-
-            document.getElementById("waitingBox").innerHTML =
-                `<div class="waiting-banner">⏳ Waiting...</div>`;
-
-            return;
-        }
-
-        document.getElementById("waitingBox").innerHTML = "";
-
-        if (!roleLoaded) {
-            fetch("/role/" + playerName)
-            .then(r => r.json())
-            .then(d => {
-                currentRole = d.role;
-                roleLoaded = true;
-                renderRole();
-            });
-
-            fetch("/all_roles")
-            .then(r => r.json())
-            .then(d => {
-                allRoles = d;
-                renderRole();
-            });
-        }
-
-        document.getElementById("round").innerText = "Round: " + state.round;
-        document.getElementById("phase").innerText = "Phase: " + state.phase;
-
-        renderList(state.alive, "alive");
-        renderList(state.eliminated, "dead");
-
-        handleDeadBanner(state);
-
-        if (state.winner) {
-            document.getElementById("winner").innerText =
-                "🏆 Winner: " + state.winner;
-            resetUI();
-            return;
-        }
-
-        if (state.phase !== currentPhase) {
-            currentPhase = state.phase;
-            actionRendered = false;
-            voteRendered = false;
-            suggestRendered = false; // ✅ RESET ONLY HERE
-            selectedAction = null;
-            selectedVote = null;
-        }
-
-        renderActions(state);
-        renderSuggestions(state);
-        renderVoting(state);
-
-        if (currentRole === "Police") {
-            fetch("/police_reports/" + playerName)
-            .then(r => r.json())
-            .then(d => renderList(d, "reports"));
-        }
-    });
-}
-
-// ---------------- ROLE ---------------- //
-
-function renderRole() {
-    if (!currentRole) return;
-
-    document.getElementById("role").innerText = "Role: " + currentRole;
-
-    if (currentRole === "Mafia") {
-        const team = Object.keys(allRoles)
-            .filter(p => allRoles[p] === "Mafia" && p !== playerName);
-
-        document.getElementById("mafiaTeam").innerText =
-            team.length ? "🕵️ Team: " + team.join(", ") : "";
-    }
-}
-
-// ---------------- ACTIONS ---------------- //
-
-function renderActions(state) {
-    const box = document.getElementById("actionBox");
-    if (actionRendered) return;
-
-    box.innerHTML = "";
-
-    if (state.phase !== "night") return;
-    if (!state.alive.includes(playerName)) return;
-
-    let targets = state.alive;
-
-    if (currentRole !== "Doctor") {
-        targets = targets.filter(p => p !== playerName);
-    }
-
-    if (currentRole === "Mafia") {
-        targets = targets.filter(p => allRoles[p] !== "Mafia");
-    }
-
-    if (!["Doctor","Police","Mafia"].includes(currentRole)) return;
-
-    if (targets.length === 0) {
-        box.innerHTML = "<h3>No valid targets</h3>";
-        return;
-    }
-
-    const text = {
-        Doctor: "Save",
-        Police: "Investigate",
-        Mafia: "Kill"
-    };
-
-    box.innerHTML = `
-        <h3>${text[currentRole]}</h3>
-        <select id="target">
-            ${targets.map(p => `<option value="${p}">${p}</option>`).join("")}
-        </select>
-        <button onclick="submitAction()">${text[currentRole]}</button>
-    `;
-
-    actionRendered = true;
-}
-
-// ---------------- FIXED SUGGESTIONS ---------------- //
-
-function renderSuggestions(state) {
-    const box = document.getElementById("suggestBox");
-
-    if (state.phase !== "night" || currentRole !== "Mafia" || !state.alive.includes(playerName)) {
-        box.innerHTML = "";
-        return;
-    }
-
-    // ✅ ONLY RENDER ONCE
-    if (!suggestRendered) {
-        let targets = state.alive.filter(p => p !== playerName);
-        targets = targets.filter(p => allRoles[p] !== "Mafia");
-
-        box.innerHTML = `
-            <h3>💡 Suggest Target</h3>
-            <select id="suggestTarget">
-                ${targets.map(p => `<option value="${p}">${p}</option>`).join("")}
-            </select>
-            <button onclick="submitSuggestion()">Suggest</button>
-            <ul id="suggestList"></ul>
-        `;
-
-        suggestRendered = true;
-    }
-
-    // ✅ ONLY UPDATE LIST
-    fetch("/suggestions")
-    .then(r => r.json())
-    .then(data => {
-        const ul = document.getElementById("suggestList");
-        ul.innerHTML = "";
-
-        for (let m in data) {
-            ul.innerHTML += `<li>${m} → ${data[m]}</li>`;
-        }
-    });
-}
-
-function submitSuggestion() {
-    const target = document.getElementById("suggestTarget").value;
-
-    fetch("/suggest", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ name: playerName, target })
-    });
-}
-
-// ---------------- VOTING ---------------- //
-
-function renderVoting(state) {
-    const box = document.getElementById("voteBox");
-    if (voteRendered) return;
-
-    box.innerHTML = "";
-
-    if (state.phase !== "voting") return;
-    if (!state.alive.includes(playerName)) return;
-
-    let targets = state.alive.filter(p => p !== playerName);
-
-    if (targets.length === 0) {
-        box.innerHTML = "<h3>No valid targets</h3>";
-        return;
-    }
-
-    box.innerHTML = `
-        <h3>🗳 Vote</h3>
-        <select id="voteTarget">
-            ${targets.map(p =>
-                `<option value="${p}" ${selectedVote===p?"selected":""}>${p}</option>`
-            ).join("")}
-        </select>
-        <button onclick="submitVote()">Vote</button>
-    `;
-
-    voteRendered = true;
-}
-
-// ---------------- HELPERS ---------------- //
-
-function submitAction() {
-    const target = document.getElementById("target").value;
-    fetch("/action", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ name: playerName, target })
-    });
-}
-
-function submitVote() {
-    const target = document.getElementById("voteTarget").value;
-    selectedVote = target;
-
-    fetch("/vote", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ name: playerName, target })
-    });
-}
-
-function handleDeadBanner(state) {
-    const banner = document.getElementById("deadBanner");
-    banner.innerHTML = state.alive.includes(playerName)
-        ? ""
-        : `<div class="dead-banner">💀 DEAD</div>`;
-}
-
-function renderList(list, id) {
-    const ul = document.getElementById(id);
-    ul.innerHTML = "";
-    list.forEach(p => {
-        const li = document.createElement("li");
-        li.innerText = p;
-        ul.appendChild(li);
-    });
-}
-
-function resetUI() {
-    document.getElementById("round").innerText = "";
-    document.getElementById("phase").innerText = "";
-    document.getElementById("actionBox").innerHTML = "";
-    document.getElementById("voteBox").innerHTML = "";
-    document.getElementById("suggestBox").innerHTML = "";
-    document.getElementById("deadBanner").innerHTML = "";
-}
-
-// ---------------- LOOP ---------------- //
-
-setInterval(updateUI, 2000);
-
-</script>
-
+<script src="{{ url_for('static', filename='js/player.js') }}"></script>
 </body>
 </html>

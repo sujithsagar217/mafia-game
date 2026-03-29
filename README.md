@@ -6,6 +6,29 @@ This project is designed for simple local play. The host controls the flow of th
 
 For code structure, routes, and implementation details, see [TECHNICAL_DETAILS.md](TECHNICAL_DETAILS.md).
 
+## Project Structure
+
+```text
+mafia-game/
+├─ app.py
+├─ requirements.txt
+├─ mafia_game/
+│  ├─ __init__.py
+│  ├─ routes.py
+│  ├─ services.py
+│  └─ state.py
+├─ templates/
+│  ├─ index.html
+│  └─ host.html
+├─ static/
+│  ├─ css/
+│  │  ├─ host.css
+│  │  └─ player.css
+│  └─ js/
+│     ├─ host.js
+│     └─ player.js
+```
+
 ## Game Overview
 
 Mafia is a social deduction game where players are secretly assigned roles. The Mafia try to eliminate everyone else without being discovered, while the Villagers use discussion and voting to find and remove the Mafia.
@@ -16,6 +39,18 @@ This version includes these roles:
 - Doctor
 - Police
 - Villager
+
+Current gameplay features include:
+
+- Host control panel for phase management
+- Host access-code gate before host controls become available
+- Live voting data for all players during the voting phase
+- Police investigation history visible only to the Police player
+- Alive and dead player tracking on both player and host screens
+- Automatic round progression after voting ends
+- Mid-game join protection
+- Tie votes explicitly eliminate nobody and move the game to the next round
+- Player disconnect handling through unload-based leave plus heartbeat cleanup
 
 ## Player Count
 
@@ -94,8 +129,16 @@ After the elimination:
    - `Resolve Night` after all night actions are submitted
    - `Start Voting` after discussion
    - `End Voting` when votes are complete
-7. Repeat until a winner is shown.
-8. Use `End Game` to reset and start over.
+7. Watch live game information on the host panel:
+   - joined players
+   - alive players
+   - dead players
+   - roles
+   - night actions
+   - live votes
+   - vote history
+8. Repeat until a winner is shown.
+9. Use `End Game` to reset and start over.
 
 ### For Players
 
@@ -105,8 +148,9 @@ After the elimination:
 4. Check your secret role on screen.
 5. Follow the current phase:
    - At night, submit your role action if you have one.
-   - During voting, cast your vote.
+   - During voting, cast your vote and watch live vote updates.
    - If eliminated, you stay out of future actions and votes.
+6. If you are the Police, you keep a running history of all your investigation results.
 
 ## Setup And Run
 
@@ -124,10 +168,34 @@ python -m venv venv
 venv\Scripts\activate
 ```
 
-Install Flask:
+Install dependencies:
 
 ```powershell
-pip install flask
+pip install -r requirements.txt
+```
+
+### Run Regression Tests
+
+To run the automated test suite:
+
+```powershell
+python -B run_tests.py
+```
+
+This verifies gameplay rules, edge cases, and a few UI contract checks.
+
+### Run A Full Simulation
+
+To simulate a full game and print the gameplay flow:
+
+```powershell
+python -B simulate_game.py --players 6
+```
+
+Optional flags:
+
+```powershell
+python -B simulate_game.py --players 6 --seed 10 --max-rounds 12
 ```
 
 ### Run The App
@@ -174,3 +242,5 @@ http://192.168.1.25:5000
 - This project currently stores game state in memory, so restarting the server resets the game.
 - The game is best suited for casual local sessions controlled by one host.
 - Player names must be unique within a game session.
+- The backend is organized into separate modules for app creation, routes, state storage, and game logic.
+- If a player closes their tab, the app attempts to remove them from the current game automatically.

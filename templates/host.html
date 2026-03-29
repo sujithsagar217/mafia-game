@@ -1,272 +1,85 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Host Control Panel</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/host.css') }}">
+</head>
 <body>
 
-<h2>🧑‍⚖️ Host Control Panel</h2>
+<main class="page">
+    <section id="hostAuthPanel" class="panel hero">
+        <h2>Host Access</h2>
+        <p class="subtitle">Enter the host access code to unlock host controls.</p>
+        <input id="hostAccessCode" type="password" placeholder="Enter host access code">
+        <button id="hostLoginBtn" type="button">Unlock Host Panel</button>
+        <h3 id="authStatus"></h3>
+    </section>
 
-<button id="startBtn" onclick="startGame()">Start Game</button>
-<button id="resolveBtn" onclick="resolveNight()">Resolve Night</button>
-<button id="startVoteBtn" onclick="startVoting()">Start Voting</button>
-<button id="endVoteBtn" onclick="endVoting()">End Voting</button>
-<button id="nextBtn" onclick="nextRound()">Next Round</button>
+    <section id="hostPanel" class="panel-group hidden">
+    <section class="panel hero">
+        <h2>Host Control Panel</h2>
+        <p class="subtitle">Manage rounds, voting, and game resets from one place.</p>
+        <div class="actions-grid">
+            <button id="startBtn" type="button">Start Game</button>
+            <button id="resolveBtn" type="button">Resolve Night</button>
+            <button id="startVoteBtn" type="button">Start Voting</button>
+            <button id="endVoteBtn" type="button">End Voting</button>
+            <button id="endGameBtn" type="button" class="danger">End Game</button>
+        </div>
+        <h3 id="status"></h3>
+        <h3 id="gameInfo"></h3>
+        <h2 id="winner" class="winner-text"></h2>
+    </section>
 
-<button onclick="endGame()" style="
-    background: #ff4757;
-    color: white;
-    padding: 10px;
-    border: none;
-    border-radius: 8px;
-    margin-top: 10px;
-    width: 100%;
-">
-    🛑 End Game
-</button>
+    <section class="panel">
+        <h3>Players</h3>
+        <ul id="players"></ul>
+    </section>
 
-<h3 id="status"></h3>
-<h3 id="gameInfo"></h3>
-<h2 id="winner" style="color:red;"></h2>
+    <section class="panel">
+        <h3>Alive Players</h3>
+        <ul id="alivePlayers"></ul>
+    </section>
 
-<h3>Players:</h3>
-<ul id="players"></ul>
+    <section class="panel">
+        <h3>Dead Players</h3>
+        <ul id="deadPlayers"></ul>
+    </section>
 
-<h3>Roles:</h3>
-<ul id="roles"></ul>
+    <section class="panel">
+        <h3>Roles</h3>
+        <ul id="roles"></ul>
+    </section>
 
-<h3>🌙 Night Actions:</h3>
-<ul id="actions"></ul>
+    <section class="panel">
+        <h3>Night Actions</h3>
+        <ul id="actions"></ul>
+    </section>
 
-<h3>💡 Mafia Suggestions:</h3> <!-- NEW -->
-<ul id="suggestions"></ul>
+    <section class="panel">
+        <h3>Mafia Suggestions</h3>
+        <ul id="suggestions"></ul>
+    </section>
 
-<h3>🗳 Live Votes:</h3>
-<ul id="voteCounts"></ul>
+    <section class="panel">
+        <h3>Live Votes</h3>
+        <ul id="voteCounts"></ul>
+    </section>
 
-<h3>🧾 Who Voted Whom:</h3>
-<ul id="voteDetails"></ul>
+    <section class="panel">
+        <h3>Who Voted Whom</h3>
+        <ul id="voteDetails"></ul>
+    </section>
 
-<h3>📜 Vote History:</h3>
-<ul id="voteHistory"></ul>
+    <section class="panel">
+        <h3>Vote History</h3>
+        <ul id="voteHistory"></ul>
+    </section>
+    </section>
+</main>
 
-<script>
-let currentPhase = "";
-let loading = false;
-
-// ---------------- SAFE FETCH ---------------- //
-
-function safeFetch(url, options = {}) {
-    if (loading) return Promise.resolve(null);
-
-    loading = true;
-
-    return fetch(url, options)
-        .then(res => res.json())
-        .then(data => {
-            loading = false;
-
-            if (data.error) {
-                setStatus("❌ " + data.error);
-                return null;
-            }
-
-            return data;
-        })
-        .catch(() => {
-            loading = false;
-            setStatus("❌ Network error");
-        });
-}
-
-function setStatus(msg) {
-    document.getElementById("status").innerText = msg;
-}
-
-// ---------------- ACTIONS ---------------- //
-
-function startGame() {
-    safeFetch("/start", { method: "POST" })
-    .then(d => d && setStatus("✅ Game Started"));
-}
-
-function resolveNight() {
-    safeFetch("/resolve", { method: "POST" })
-    .then(d => d && setStatus("🌙 Eliminated: " + (d.eliminated || "Nobody")));
-}
-
-function startVoting() {
-    safeFetch("/start_voting", { method: "POST" })
-    .then(d => d && setStatus("🗳 Voting Started"));
-}
-
-function endVoting() {
-    safeFetch("/end_vote", { method: "POST" })
-    .then(d => d && setStatus("🗳 Eliminated: " + (d.eliminated || "Nobody")));
-}
-
-function nextRound() {
-    safeFetch("/next_round", { method: "POST" })
-    .then(d => d && setStatus("➡️ Next Round Started"));
-}
-
-// ---------------- LOADERS ---------------- //
-
-function loadPlayers() {
-    fetch("/players")
-    .then(r => r.json())
-    .then(players => {
-        const list = document.getElementById("players");
-        list.innerHTML = "";
-        players.forEach(p => list.innerHTML += `<li>${p}</li>`);
-    });
-}
-
-function loadRoles() {
-    fetch("/all_roles")
-    .then(r => r.json())
-    .then(data => {
-        const list = document.getElementById("roles");
-        list.innerHTML = "";
-        for (let n in data) {
-            list.innerHTML += `<li>${n} → ${data[n]}</li>`;
-        }
-    });
-}
-
-function loadActions() {
-    fetch("/actions")
-    .then(r => r.json())
-    .then(data => {
-        const list = document.getElementById("actions");
-        list.innerHTML = "";
-
-        list.innerHTML += `<li>Doctor → ${data.doctor || "-"}</li>`;
-        list.innerHTML += `<li>Police → ${data.police || "-"}</li>`;
-
-        const mv = data.mafia_votes || {};
-        if (!Object.keys(mv).length) {
-            list.innerHTML += `<li>Mafia → -</li>`;
-        } else {
-            for (let m in mv) {
-                list.innerHTML += `<li>Mafia (${m}) → ${mv[m]}</li>`;
-            }
-        }
-    });
-}
-
-// ✅ NEW: mafia suggestions
-function loadSuggestions() {
-    fetch("/suggestions")
-    .then(r => r.json())
-    .then(data => {
-        const list = document.getElementById("suggestions");
-        list.innerHTML = "";
-
-        if (!Object.keys(data).length) {
-            list.innerHTML = "<li>-</li>";
-            return;
-        }
-
-        for (let m in data) {
-            list.innerHTML += `<li>${m} → ${data[m]}</li>`;
-        }
-    });
-}
-
-function loadGameState() {
-    fetch("/game_state")
-    .then(r => r.json())
-    .then(state => {
-        currentPhase = state.phase;
-
-        document.getElementById("gameInfo").innerText =
-            `Round: ${state.round} | Phase: ${state.phase}`;
-
-        // ✅ FIX: clear winner when waiting
-        if (state.phase === "waiting") {
-            document.getElementById("winner").innerText = "";
-        }
-
-        if (state.winner) {
-            document.getElementById("winner").innerText =
-                "🏆 Winner: " + state.winner;
-        }
-
-        updateButtons(state.phase);
-    });
-}
-
-function loadVotes() {
-    fetch("/votes")
-    .then(r => r.json())
-    .then(data => {
-        const c = document.getElementById("voteCounts");
-        const d = document.getElementById("voteDetails");
-
-        c.innerHTML = "";
-        d.innerHTML = "";
-
-        for (let t in data.counts) {
-            c.innerHTML += `<li>${t} → ${data.counts[t]}</li>`;
-        }
-
-        for (let v in data.individual) {
-            d.innerHTML += `<li>${v} → ${data.individual[v]}</li>`;
-        }
-    });
-}
-
-function loadVoteHistory() {
-    fetch("/vote_history")
-    .then(r => r.json())
-    .then(h => {
-        const list = document.getElementById("voteHistory");
-        list.innerHTML = "";
-
-        h.forEach(x => {
-            list.innerHTML += `
-                <li>
-                    Round ${x.round} |
-                    Eliminated: ${x.eliminated} |
-                    Votes: ${JSON.stringify(x.votes)}
-                </li>`;
-        });
-    });
-}
-
-// ---------------- BUTTON CONTROL ---------------- //
-
-function updateButtons(p) {
-    document.getElementById("startBtn").disabled = p !== "waiting";
-    document.getElementById("resolveBtn").disabled = p !== "night";
-    document.getElementById("startVoteBtn").disabled = p !== "day";
-    document.getElementById("endVoteBtn").disabled = p !== "voting";
-    document.getElementById("nextBtn").disabled = p !== "day";
-}
-
-// ---------------- RESET ---------------- //
-
-function endGame() {
-    if (!confirm("End game?")) return;
-
-    fetch("/reset", { method: "POST" })
-    .then(() => {
-        setStatus("🔄 Game Reset");
-        location.reload();
-    });
-}
-
-// ---------------- LOOP ---------------- //
-
-setInterval(() => {
-    loadPlayers();
-    loadRoles();
-    loadActions();
-    loadSuggestions(); // ✅ NEW
-    loadGameState();
-    loadVotes();
-    loadVoteHistory();
-}, 2000);
-
-</script>
-
+<script src="{{ url_for('static', filename='js/host.js') }}"></script>
 </body>
 </html>

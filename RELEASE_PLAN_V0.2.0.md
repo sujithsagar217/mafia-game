@@ -6,6 +6,22 @@ This document outlines the planned gameplay and technical changes for the next r
 
 Move from a manually controlled host page to a lobby-driven game flow where all players join the same lobby, mark themselves ready, and the game starts automatically once everyone is ready.
 
+Product decision note:
+
+- This change should be implemented as the long-term direction, not as an optional toggle layered onto the current dedicated-host model.
+- The intended end state is that the dedicated host page stops being the primary gameplay model.
+- Every participant joins through the shared lobby as a player.
+- One player becomes the temporary controller for that match only.
+- After `End Game`, everyone returns to the lobby and must ready up again.
+- This direction is preferred because it matches the desired party-game flow better than preserving a permanent out-of-game host.
+
+The current codebase already includes some supporting groundwork:
+
+- modular backend structure
+- player leave handling
+- live player state on host and player screens
+- automated regression tests
+
 ## Planned Player Experience
 
 Before a game starts:
@@ -21,6 +37,11 @@ When the game starts:
 - One player receives the host/controller role for that match
 - That player is the only one who can control phase transitions and resolution for that game
 - Other players continue to play through the standard role-based game flow
+
+Controller assignment clarification:
+
+- The controller should be treated as a per-match capability, not a permanent account/session privilege.
+- The system should be designed so the current access-code-based dedicated host model can be retired later, rather than deeply expanded.
 
 When the game ends:
 
@@ -55,7 +76,7 @@ When the game ends:
 ### End Game
 
 - Reset match state without removing the lobby system
-- Preserve joined players unless they explicitly leave
+- Decide whether joined players should remain in the lobby or be cleared on end-game
 - Clear ready state for the next game
 
 ## Suggested Technical Approach
@@ -133,6 +154,12 @@ This may allow the current `host.html` page to be removed entirely, or reduced t
 - Duplicate player names
 - A dead player attempting controller actions
 - Lobby state and match state getting mixed during reset
+- Reconciling current `/reset` behavior with the future lobby-ready flow
+
+Open design item to revisit before implementation:
+
+- Decide exactly how the temporary controller is chosen at match start
+- Decide what fallback behavior is used if that controller disconnects during the match
 
 ## Recommended Implementation Order
 
