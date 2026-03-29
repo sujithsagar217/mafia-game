@@ -1,8 +1,11 @@
 # Mafia Game
 
-A browser-based multiplayer Mafia party game built with Flask. One person acts as the host, players join from their own devices, and the game moves through repeating night, day, and voting phases until either the Mafia or the Villagers win.
+A browser-based multiplayer Mafia party game built with Flask. The project now supports two ways to run the same game:
 
-This project is designed for simple local play. The host controls the flow of the game from a dedicated host panel, while each player uses the main game page to join, view their role, and submit actions.
+- `dedicated-host`: one browser session unlocks the host panel with an access code and manually starts the match
+- `lobby-ready`: all participants join as players, everyone clicks ready, and one player is assigned as the host for that match
+
+This project is designed for simple local play on the same machine or local network. Players use the main game page to join, view their role, and submit actions, while the host controls phase changes from the host panel.
 
 For code structure, routes, and implementation details, see [TECHNICAL_DETAILS.md](TECHNICAL_DETAILS.md).
 
@@ -39,11 +42,14 @@ This version includes these roles:
 - Doctor
 - Police
 - Villager
+- Host in `lobby-ready` mode only
 
 Current gameplay features include:
 
 - Host control panel for phase management
-- Host access-code gate before host controls become available
+- Dedicated-host and lobby-ready runtime modes from the same codebase
+- Host access-code gate in dedicated-host mode
+- Automatic ready-up lobby flow and dynamic host assignment in lobby-ready mode
 - Live voting data for all players during the voting phase
 - Police investigation history visible only to the Police player
 - Alive and dead player tracking on both player and host screens
@@ -52,17 +58,36 @@ Current gameplay features include:
 - Tie votes explicitly eliminate nobody and move the game to the next round
 - Player disconnect handling through unload-based leave plus heartbeat cleanup
 
-## Player Count
+## Game Modes
+
+### Dedicated Host
 
 - Minimum supported players: 4
-- Recommended range: 4 to 10 players
-- Mafia count:
+- A separate host session unlocks `/host` with the access code
+- The host manually starts the match
+- All joined players receive playable roles
+
+### Lobby Ready
+
+- Minimum supported players: 5
+- All joined players enter the same lobby and click ready
+- The match starts automatically when all joined players are ready
+- One joined player becomes the `Host` for that match only
+- The assigned host does not receive a second playable role
+
+## Role Counts
+
+- Dedicated-host mode:
   - 1 Mafia when there are 4 or 5 players
   - 2 Mafia when there are 6 or more players
-- Special roles:
+- Lobby-ready mode:
+  - 1 Host is assigned first
+  - 1 Mafia when there are 5 or 6 joined players
+  - 2 Mafia when there are 7 or more joined players
+- Both modes always include:
   - 1 Doctor
   - 1 Police
-- All remaining players become Villagers
+- All remaining active players become Villagers
 
 ## Win Conditions
 
@@ -120,37 +145,53 @@ After the elimination:
 
 ### For The Host
 
-1. Start the Flask app locally.
+#### Dedicated-Host Mode
+
+1. Start the Flask app locally in `dedicated-host` mode.
 2. Open the host panel in a browser.
-3. Ask all players to open the player page on their own devices or browser tabs.
-4. Wait for everyone to join.
-5. Click `Start Game`.
-6. Guide the table through each phase:
+3. Enter the host access code to unlock controls.
+4. Ask all players to open the player page on their own devices or browser tabs.
+5. Wait for everyone to join.
+6. Click `Start Game`.
+7. Guide the table through each phase:
    - `Resolve Night` after all night actions are submitted
    - `Start Voting` after discussion
    - `End Voting` when votes are complete
-7. Watch live game information on the host panel:
-   - joined players
-   - alive players
-   - dead players
-   - roles
-   - night actions
-   - live votes
-   - vote history
-8. Repeat until a winner is shown.
-9. Use `End Game` to reset and start over.
+
+#### Lobby-Ready Mode
+
+1. Start the Flask app locally in `lobby-ready` mode.
+2. Ask all participants to open the player page and join the lobby.
+3. Wait for everyone to click ready.
+4. Once the host is assigned automatically, that player opens the host panel from their player screen.
+5. The assigned host guides the table through each phase:
+   - `Resolve Night` after all night actions are submitted
+   - `Start Voting` after discussion
+   - `End Voting` when votes are complete
+
+In both modes, the host panel shows:
+
+- joined players
+- alive players
+- dead players
+- roles
+- night actions
+- live votes
+- vote history
 
 ### For Players
 
 1. Open the player page in a browser.
 2. Enter your name and click `Join`.
-3. Wait for the host to start the game.
-4. Check your secret role on screen.
-5. Follow the current phase:
+3. If the app is running in `lobby-ready` mode, click `Ready` after joining.
+4. Wait for the game to start.
+5. Check your secret role on screen.
+6. Follow the current phase:
    - At night, submit your role action if you have one.
    - During voting, cast your vote and watch live vote updates.
    - If eliminated, you stay out of future actions and votes.
-6. If you are the Police, you keep a running history of all your investigation results.
+7. If you are the Police, you keep a running history of all your investigation results.
+8. If you are assigned `Host` in `lobby-ready` mode, use the button on your player screen to open the host panel.
 
 ## Setup And Run
 
@@ -203,7 +244,13 @@ python -B simulate_game.py --players 6 --seed 10 --max-rounds 12
 From the project folder:
 
 ```powershell
-python app.py
+python app.py --mode dedicated-host
+```
+
+Or run the lobby-ready flow:
+
+```powershell
+python app.py --mode lobby-ready
 ```
 
 The app listens on port `5000` for the host machine and other devices on the same local network.
@@ -222,25 +269,37 @@ http://192.168.1.25:5000
 
 ### Open The Pages
 
-- On the host computer:
-  - Player page: `http://127.0.0.1:5000/`
-  - Host page: `http://127.0.0.1:5000/host`
-- On other devices in the same local network:
-  - Player page: `http://HOST_LOCAL_IP:5000/`
-  - Host page: `http://HOST_LOCAL_IP:5000/host`
+- Player page:
+  - `http://127.0.0.1:5000/`
+  - `http://HOST_LOCAL_IP:5000/`
+- Host page:
+  - `http://127.0.0.1:5000/host`
+  - `http://HOST_LOCAL_IP:5000/host`
+
+In `lobby-ready` mode, normal players usually do not open `/host` directly. The assigned host should open it from the button on their player screen.
 
 ## Quick Start
 
-1. Run `python app.py`.
+### Dedicated-Host Quick Start
+
+1. Run `python app.py --mode dedicated-host`.
 2. Open `/host` on the host device.
 3. Open `/` for each player.
 4. Have at least 4 players join.
-5. Start the game from the host panel.
+5. Unlock the host panel and start the game.
+
+### Lobby-Ready Quick Start
+
+1. Run `python app.py --mode lobby-ready`.
+2. Open `/` for each participant.
+3. Have at least 5 players join.
+4. Everyone clicks ready.
+5. The assigned host opens the host panel from their player page.
 
 ## Notes
 
 - This project currently stores game state in memory, so restarting the server resets the game.
-- The game is best suited for casual local sessions controlled by one host.
+- The game supports both a classic dedicated host flow and a ready-up lobby flow.
 - Player names must be unique within a game session.
 - The backend is organized into separate modules for app creation, routes, state storage, and game logic.
 - If a player closes their tab, the app attempts to remove them from the current game automatically.

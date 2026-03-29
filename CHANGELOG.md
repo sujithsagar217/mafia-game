@@ -4,22 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on a simple version-by-version history for this repository.
 
-## [0.2.0] - Planned
+## [0.2.0] - 2026-03-29
 
-Planned improvements for the next release:
-
-- Redesign the host experience with a better UI
-- Replace the fixed host page flow with a shared lobby flow
-- Allow players to join and leave the lobby before the game starts
-- Add a `Ready` state for players
-- Start the game automatically when all joined players are ready
-- Assign one player as the host/controller for that match
-- Return all players to the lobby after `End Game`
-- Require players to ready up again before the next match
-
-## [0.1.1] - Unreleased
-
-Current work completed after the initial release:
+This release turns the game into a dual-mode experience: you can now run the classic dedicated-host flow or the new ready-up lobby flow from the same codebase.
 
 ### Added
 
@@ -33,6 +20,14 @@ Current work completed after the initial release:
 - Heartbeat endpoint and stale-player pruning
 - Simulation script in `simulate_game.py`
 - Automated regression suite in `tests/` with `run_tests.py`
+- Configurable `GAME_MODE` support with `dedicated-host` and `lobby-ready`
+- CLI mode selection through `python app.py --mode ...`
+- Shared lobby endpoint and ready-state tracking for lobby-ready mode
+- Automatic match start once all joined lobby players are ready
+- Per-match host/controller assignment in lobby-ready mode
+- Host claim flow that follows the assigned player's session in lobby-ready mode
+- Mobile-friendlier player and host layouts
+- Richer host action visibility showing `Pending`, `Submitted`, `Eliminated`, or `Unavailable`
 
 ### Changed
 
@@ -40,7 +35,14 @@ Current work completed after the initial release:
 - Police reports are shown only to the Police player
 - Sensitive host-only data endpoints now require host authorization
 - Tie votes now explicitly eliminate nobody and advance to the next round
-- Documentation updated to match the modular backend and testing workflow
+- Documentation updated to match the modular backend, dual-mode runtime, and testing workflow
+- The player and host pages now adapt their controls based on the configured game mode
+- In lobby-ready mode, the assigned host is a dedicated `Host` role and does not receive a second playable role
+
+### Notes
+
+- `dedicated-host` remains the default mode for backward compatibility
+- `lobby-ready` requires at least 5 joined players because 1 player is reserved as the per-match host
 
 ## [0.1.0] - 2026-03-29
 

@@ -1,6 +1,6 @@
 # Technical Details
 
-This document explains the current structure and logic of the Mafia Game project.
+This document explains the current structure and runtime logic of the Mafia Game project.
 
 ## Stack
 
@@ -22,6 +22,22 @@ This document explains the current structure and logic of the Mafia Game project
 - `static/js/player.js`: player page behavior
 - `static/js/host.js`: host page behavior
 
+## Runtime Modes
+
+The app supports two runtime modes selected through `GAME_MODE` or `python app.py --mode ...`:
+
+- `dedicated-host`
+  - the host unlocks `/host` with a shared access code
+  - the host manually starts the match
+  - all joined players receive playable roles
+- `lobby-ready`
+  - all participants join through `/`
+  - each joined player can toggle ready state
+  - the match starts automatically when everyone is ready
+  - one joined player becomes the per-match `Host`
+
+The default mode is `dedicated-host`.
+
 ## Main Runtime Model
 
 The game keeps runtime state in an in-memory `GameStore` object in `mafia_game/state.py`.
@@ -29,6 +45,8 @@ The game keeps runtime state in an in-memory `GameStore` object in `mafia_game/s
 That store tracks:
 
 - registered players
+- ready-state per joined player
+- assigned host name for lobby-ready mode
 - assigned roles
 - alive and eliminated players
 - current round and phase
@@ -78,8 +96,13 @@ When `/start` is called:
 
 Current rule in code:
 
-- if total players is 6 or more, assign 2 Mafia
-- otherwise, assign 1 Mafia
+- dedicated-host mode:
+  - if total players is 6 or more, assign 2 Mafia
+  - otherwise, assign 1 Mafia
+- lobby-ready mode:
+  - assign 1 `Host` first
+  - if active playable players are 6 or more, assign 2 Mafia
+  - otherwise, assign 1 Mafia
 
 ## Night Logic
 
@@ -142,6 +165,7 @@ Rules:
 The player page:
 
 - lets a user join by name
+- shows lobby membership in both modes
 - polls the server every 2 seconds
 - loads the player's role after the game starts
 - shows alive and dead players
@@ -151,15 +175,31 @@ The player page:
 - shows a dead banner after elimination
 - attempts to notify the server when a player leaves the page
 
+In `lobby-ready` mode it also:
+
+- shows ready-state counts
+- lets the player toggle ready state
+- shows the assigned host name when the match begins
+- exposes an `Open Host Panel` button only to the assigned host player
+
 ### Host Page
 
 The host page:
 
 - polls the server every 2 seconds
-- requires a host access code before showing controls
 - displays players, alive players, dead players, roles, night actions, suggestions, live votes, and vote history
 - enables or disables buttons based on the current phase
-- provides controls to start, resolve, vote, and reset the game
+- provides controls to resolve, vote, and reset the game
+
+Host authorization depends on the mode:
+
+- dedicated-host mode:
+  - `/host/login` uses the shared access code
+  - `/start` remains a manual host action
+- lobby-ready mode:
+  - `/host/claim` ties host access to the assigned host player's session
+  - `/start` is blocked because the match auto-starts after all players are ready
+  - the `Host` player opens `/host` from the player page
 
 ## Main Routes
 
@@ -169,10 +209,13 @@ Core gameplay routes include:
 - `/host`: host page
 - `/join`: join the lobby
 - `/leave`: remove a player from the current session
+- `/lobby`: read joined players, ready state, host assignment, and minimum player requirement
 - `/players`: list joined players
-- `/start`: start the game
+- `/ready`: toggle ready state in lobby-ready mode
+- `/start`: start the game in dedicated-host mode
 - `/host/status`: check whether the current browser session is authorized as host
-- `/host/login`: enable host controls for the current browser session
+- `/host/login`: enable host controls for the current browser session in dedicated-host mode
+- `/host/claim`: claim assigned-host controls in lobby-ready mode
 - `/heartbeat`: keep a joined player marked as active
 - `/role/<name>`: fetch one player's role and, for Mafia players, their teammates
 - `/all_roles`: fetch all roles for the authorized host session
@@ -180,6 +223,7 @@ Core gameplay routes include:
 - `/action`: submit a night action
 - `/suggest`: submit a Mafia suggestion
 - `/suggestions`: read Mafia suggestions for the authorized host session
+- `/suggestions/<name>`: read Mafia suggestions from a Mafia player's perspective
 - `/actions`: read submitted night actions for the authorized host session
 - `/resolve`: resolve the night for the authorized host session
 - `/start_voting`: begin voting for the authorized host session
@@ -193,15 +237,16 @@ Core gameplay routes include:
 ## Current Limitations
 
 - No persistent database
-- Host access uses a simple shared access code and session flag, not a full account system
-- The host page can still be opened by anyone, but the controls and sensitive data stay locked until host login succeeds
+- Dedicated-host mode still uses a simple shared access code and session flag, not a full account system
+- Lobby-ready mode still relies on in-memory player identity plus session storage, not a full account system
+- The host page can still be opened by anyone, but the controls and sensitive data stay locked until the session is authorized
 - Presence tracking is heartbeat-based but still in-memory, so it resets when the Flask process restarts
 - There is still no room-based separation for multiple simultaneous games
 
 ## Suggested Future Improvements
 
 - Add room-based multiplayer support
-- Replace the shared host access code with a role-driven or lobby-driven controller flow
+- Consider whether one of the two runtime modes should eventually become the sole default product flow
 - Persist presence and match state beyond a single server process
 - Add deployment configuration
-- Add tests for role assignment, voting, and winner detection
+- Add browser-level smoke tests in addition to the backend regression suite
