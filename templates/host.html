@@ -9,20 +9,39 @@
 <body>
 
 <main class="page">
+    {% if game_mode == "lobby-ready" %}
     <section id="hostAuthPanel" class="panel hero">
-        <h2>Host Access</h2>
-        <p class="subtitle">Enter the host access code to unlock host controls.</p>
-        <input id="hostAccessCode" type="password" placeholder="Enter host access code">
-        <button id="hostLoginBtn" type="button">Unlock Host Panel</button>
+        <p class="eyebrow">Assigned Host Only</p>
+        <h2>Host Control Panel</h2>
+        <p class="subtitle">Open this page from the assigned host player's game screen. Host access follows that joined player session automatically.</p>
+        <p id="assignedHostLabel" class="support-text"></p>
         <h3 id="authStatus"></h3>
     </section>
+    {% else %}
+    <section id="hostAuthPanel" class="panel hero">
+        <p class="eyebrow">Moderator Access</p>
+        <h2>Host Access</h2>
+        <p class="subtitle">Enter the host access code to unlock the live host dashboard for this room.</p>
+        <div class="claim-row">
+            <div>
+                <label class="field-label" for="hostAccessCode">Host access code</label>
+                <input id="hostAccessCode" type="password" placeholder="Enter host access code" autocomplete="current-password">
+            </div>
+            <button id="hostLoginBtn" type="button">Unlock Host Panel</button>
+        </div>
+        <p class="support-text">Once unlocked, the host page refreshes automatically and shows whether Doctor, Police, and Mafia are pending, submitted, or already eliminated.</p>
+        <h3 id="authStatus"></h3>
+    </section>
+    {% endif %}
 
     <section id="hostPanel" class="panel-group hidden">
     <section class="panel hero">
         <h2>Host Control Panel</h2>
         <p class="subtitle">Manage rounds, voting, and game resets from one place.</p>
         <div class="actions-grid">
+            {% if game_mode == "dedicated-host" %}
             <button id="startBtn" type="button">Start Game</button>
+            {% endif %}
             <button id="resolveBtn" type="button">Resolve Night</button>
             <button id="startVoteBtn" type="button">Start Voting</button>
             <button id="endVoteBtn" type="button">End Voting</button>
@@ -80,6 +99,9 @@
     </section>
 </main>
 
+<script>
+window.APP_CONFIG = {{ app_config | tojson }};
+</script>
 <script src="{{ url_for('static', filename='js/host.js') }}"></script>
 </body>
 </html>

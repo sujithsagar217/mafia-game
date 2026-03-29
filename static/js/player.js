@@ -1,7 +1,11 @@
+const appConfig = window.APP_CONFIG || {};
+const gameMode = appConfig.game_mode || "dedicated-host";
+
 let playerName = "";
 let currentRole = null;
 let roleLoaded = false;
 let mafiaTeam = [];
+let playerReady = false;
 
 let currentPhase = "";
 let actionRendered = false;
@@ -13,7 +17,16 @@ let selectedAction = null;
 let joinedGame = false;
 let heartbeatTimerId = null;
 
+const readyBtn = document.getElementById("readyBtn");
+const openHostBtn = document.getElementById("openHostBtn");
+
 document.getElementById("joinBtn").addEventListener("click", joinGame);
+if (readyBtn) {
+    readyBtn.addEventListener("click", toggleReady);
+}
+if (openHostBtn) {
+    openHostBtn.addEventListener("click", openHostPanel);
+}
 window.addEventListener("pagehide", leaveGameSilently);
 window.addEventListener("beforeunload", leaveGameSilently);
 
@@ -44,9 +57,17 @@ function joinGame() {
             joinedGame = true;
             document.getElementById("name").disabled = true;
             document.getElementById("joinBtn").disabled = true;
-            document.getElementById("waitingBox").innerHTML =
-                '<div class="waiting-banner">Joined successfully. Waiting for the host to start the game...</div>';
+
+            if (readyBtn) {
+                readyBtn.disabled = false;
+            }
+
+            document.getElementById("waitingBox").innerHTML = gameMode === "lobby-ready"
+                ? '<div class="waiting-banner">Joined successfully. Mark yourself ready when you are set.</div>'
+                : '<div class="waiting-banner">Joined successfully. Waiting for the host to start the game...</div>';
+
             startHeartbeat();
+            updateUI();
         });
 }
 
@@ -55,68 +76,156 @@ function updateUI() {
         return;
     }
 
-    fetch("/game_state")
-        .then((res) => res.json())
-        .then((state) => {
-            if (state.phase === "waiting") {
-                roleLoaded = false;
-                mafiaTeam = [];
-                currentRole = null;
+    Promise.all([
+        fetch("/lobby").then((res) => res.json()),
+        fetch("/game_state").then((res) => res.json())
+    ]).then(([lobby, state]) => {
+        syncLobbyState(lobby, state);
 
-                document.getElementById("winner").innerText = "";
-                resetUI();
-                document.getElementById("waitingBox").innerHTML =
-                    '<div class="waiting-banner">Waiting for the host to start the game...</div>';
-                return;
+        if (state.phase === "waiting") {
+            roleLoaded = false;
+            mafiaTeam = [];
+            currentRole = null;
+
+            document.getElementById("winner").innerText = "";
+            resetUI();
+            return;
+        }
+
+        document.getElementById("waitingBox").innerHTML = "";
+
+        if (!roleLoaded) {
+            fetch("/role/" + playerName)
+                .then((r) => r.json())
+                .then((data) => {
+                    currentRole = data.role;
+                    mafiaTeam = data.mafia_team || [];
+                    roleLoaded = true;
+                    renderRole();
+                });
+        }
+
+        document.getElementById("round").innerText = "Round: " + state.round;
+        document.getElementById("phase").innerText = "Phase: " + state.phase;
+
+        renderList(state.alive, "alive");
+        renderList(state.eliminated, "dead");
+        handleDeadBanner(state);
+
+        if (state.winner) {
+            document.getElementById("winner").innerText = "Winner: " + state.winner;
+            resetUI();
+            return;
+        }
+
+        if (state.phase !== currentPhase) {
+            currentPhase = state.phase;
+            actionRendered = false;
+            voteRendered = false;
+            suggestRendered = false;
+            selectedAction = null;
+            selectedVote = null;
+        }
+
+        renderActions(state);
+        renderSuggestions(state);
+        renderVoting(state);
+        renderLiveVotes(state);
+        updatePoliceReportsVisibility();
+
+        if (currentRole === "Police") {
+            fetch("/police_reports/" + playerName)
+                .then((r) => r.json())
+                .then((data) => renderList(data, "reports"));
+        }
+    });
+}
+
+function syncLobbyState(lobby, state) {
+    const hostNotice = document.getElementById("hostNotice");
+    const players = gameMode === "lobby-ready"
+        ? lobby.players.map((player) => {
+            const readyState = lobby.ready[player] ? "Ready" : "Waiting";
+            const hostTag = lobby.host_name === player ? " | Host" : "";
+            return `${player} - ${readyState}${hostTag}`;
+        })
+        : lobby.players;
+
+    renderList(players, "lobbyPlayers");
+
+    if (gameMode === "lobby-ready") {
+        playerReady = Boolean((lobby.ready || {})[playerName]);
+
+        if (readyBtn) {
+            readyBtn.disabled = !joinedGame || state.phase !== "waiting";
+            readyBtn.innerText = playerReady ? "Not Ready Yet" : "I am Ready";
+        }
+
+        const readyHint = document.getElementById("readyHint");
+        if (readyHint) {
+            readyHint.innerText = joinedGame
+                ? `${lobby.ready_count}/${lobby.players.length} players are ready.`
+                : "Join first, then mark yourself ready.";
+        }
+
+        if (!lobby.host_name) {
+            hostNotice.innerText = "Host will be assigned automatically when the match starts.";
+            if (openHostBtn) {
+                openHostBtn.classList.add("hidden");
             }
-
-            document.getElementById("waitingBox").innerHTML = "";
-
-            if (!roleLoaded) {
-                fetch("/role/" + playerName)
-                    .then((r) => r.json())
-                    .then((data) => {
-                        currentRole = data.role;
-                        mafiaTeam = data.mafia_team || [];
-                        roleLoaded = true;
-                        renderRole();
-                    });
+        } else if (lobby.host_name === playerName) {
+            hostNotice.innerText = "You are the assigned host for this match. Use the button below to open the host controls.";
+            if (openHostBtn) {
+                openHostBtn.classList.remove("hidden");
             }
-
-            document.getElementById("round").innerText = "Round: " + state.round;
-            document.getElementById("phase").innerText = "Phase: " + state.phase;
-
-            renderList(state.alive, "alive");
-            renderList(state.eliminated, "dead");
-            handleDeadBanner(state);
-
-            if (state.winner) {
-                document.getElementById("winner").innerText = "Winner: " + state.winner;
-                resetUI();
-                return;
+        } else {
+            hostNotice.innerText = "Assigned host: " + lobby.host_name;
+            if (openHostBtn) {
+                openHostBtn.classList.add("hidden");
             }
+        }
 
-            if (state.phase !== currentPhase) {
-                currentPhase = state.phase;
-                actionRendered = false;
-                voteRendered = false;
-                suggestRendered = false;
-                selectedAction = null;
-                selectedVote = null;
-            }
+        if (state.phase !== "waiting") {
+            document.getElementById("waitingBox").innerHTML =
+                `<div class="waiting-banner">Game started. Assigned host: ${lobby.host_name || "-"}</div>`;
+            return;
+        }
 
-            renderActions(state);
-            renderSuggestions(state);
-            renderVoting(state);
-            renderLiveVotes(state);
-            updatePoliceReportsVisibility();
+        const missingPlayers = Math.max(0, lobby.minimum_players - lobby.players.length);
+        if (missingPlayers > 0) {
+            document.getElementById("waitingBox").innerHTML =
+                `<div class="waiting-banner">Waiting for ${missingPlayers} more player${missingPlayers === 1 ? "" : "s"} to join.</div>`;
+            return;
+        }
 
-            if (currentRole === "Police") {
-                fetch("/police_reports/" + playerName)
-                    .then((r) => r.json())
-                    .then((data) => renderList(data, "reports"));
-            }
-        });
+        if (lobby.all_ready) {
+            document.getElementById("waitingBox").innerHTML =
+                '<div class="waiting-banner">Everyone is ready. Starting the match...</div>';
+            return;
+        }
+
+        document.getElementById("waitingBox").innerHTML =
+            '<div class="waiting-banner">Waiting for everyone in the lobby to click ready.</div>';
+        return;
+    }
+
+    hostNotice.innerText = "A dedicated host controls this match from the host page.";
+
+    if (state.phase !== "waiting") {
+        document.getElementById("waitingBox").innerHTML =
+            '<div class="waiting-banner">Game started. Follow the current phase and play your role.</div>';
+        return;
+    }
+
+    const missingPlayers = Math.max(0, lobby.minimum_players - lobby.players.length);
+    if (missingPlayers > 0) {
+        document.getElementById("waitingBox").innerHTML =
+            `<div class="waiting-banner">Waiting for ${missingPlayers} more player${missingPlayers === 1 ? "" : "s"} to join.</div>`;
+        return;
+    }
+
+    document.getElementById("waitingBox").innerHTML =
+        '<div class="waiting-banner">Waiting for the host to start the game...</div>';
 }
 
 function renderRole() {
@@ -125,11 +234,15 @@ function renderRole() {
     }
 
     document.getElementById("role").innerText = "Role: " + currentRole;
+    document.getElementById("mafiaTeam").innerText = "";
     updatePoliceReportsVisibility();
 
     if (currentRole === "Mafia") {
         document.getElementById("mafiaTeam").innerText =
             mafiaTeam.length ? "Team: " + mafiaTeam.join(", ") : "";
+    } else if (currentRole === "Host") {
+        document.getElementById("mafiaTeam").innerText =
+            "You are moderating this match. Use the host panel to run the phases.";
     }
 }
 
@@ -210,7 +323,7 @@ function renderSuggestions(state) {
         suggestRendered = true;
     }
 
-    fetch("/suggestions")
+    fetch("/suggestions/" + playerName)
         .then((r) => r.json())
         .then((data) => {
             const list = document.getElementById("suggestList");
@@ -325,6 +438,34 @@ function showBanner(message) {
         `<div class="dead-banner">${message}</div>`;
 }
 
+function toggleReady() {
+    fetch("/ready", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: playerName, ready: !playerReady })
+    })
+        .then((response) =>
+            response.json().then((data) => ({
+                ok: response.ok,
+                data
+            }))
+        )
+        .then(({ ok, data }) => {
+            if (!ok) {
+                showBanner(data.error || "Unable to update readiness.");
+                return;
+            }
+
+            playerReady = Boolean(data.ready);
+            updateUI();
+        });
+}
+
+function openHostPanel() {
+    const hostUrl = `/host?player_name=${encodeURIComponent(playerName)}`;
+    window.open(hostUrl, "_blank", "noopener");
+}
+
 function leaveGameSilently() {
     if (!joinedGame || !playerName) {
         return;
@@ -379,6 +520,11 @@ function submitVote() {
 
 function handleDeadBanner(state) {
     const banner = document.getElementById("deadBanner");
+    if (currentRole === "Host") {
+        banner.innerHTML = "";
+        return;
+    }
+
     banner.innerHTML = state.alive.includes(playerName)
         ? ""
         : '<div class="dead-banner">You are eliminated.</div>';
@@ -397,6 +543,8 @@ function renderList(list, id) {
 function resetUI() {
     document.getElementById("round").innerText = "";
     document.getElementById("phase").innerText = "";
+    document.getElementById("role").innerText = "";
+    document.getElementById("mafiaTeam").innerText = "";
     document.getElementById("actionBox").innerHTML = "";
     document.getElementById("voteBox").innerHTML = "";
     document.getElementById("suggestBox").innerHTML = "";

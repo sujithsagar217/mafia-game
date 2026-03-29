@@ -16,7 +16,9 @@ class MafiaGameTestCase(unittest.TestCase):
     def reset_store(self):
         service.reset_game()
         store.players = []
+        store.ready_players = {}
         store.roles = {}
+        store.host_name = None
         store.game_started = False
         store.game_state.alive = []
         store.game_state.eliminated = []
@@ -30,6 +32,7 @@ class MafiaGameTestCase(unittest.TestCase):
         store.votes = {}
         store.voted = {}
         store.vote_history = []
+        store.last_seen = {}
 
     def join_players(self, names):
         for name in names:
@@ -85,13 +88,15 @@ class MafiaGameTestCase(unittest.TestCase):
     def test_host_status_reflects_session_auth(self):
         response = self.client.get("/host/status")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json(), {"authorized": False})
+        self.assertFalse(response.get_json()["authorized"])
+        self.assertEqual(response.get_json()["mode"], "dedicated-host")
 
         self.login_host()
 
         response = self.client.get("/host/status")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json(), {"authorized": True})
+        self.assertTrue(response.get_json()["authorized"])
+        self.assertEqual(response.get_json()["mode"], "dedicated-host")
 
     def test_fresh_client_does_not_inherit_host_session(self):
         self.login_host()
@@ -99,7 +104,16 @@ class MafiaGameTestCase(unittest.TestCase):
         other_client = self.app.test_client()
         response = other_client.get("/host/status")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json(), {"authorized": False})
+        self.assertFalse(response.get_json()["authorized"])
+
+    def test_ready_endpoint_is_blocked_in_dedicated_host_mode(self):
+        self.join_players(["A"])
+        response = self.client.post("/ready", json={"name": "A", "ready": True})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.get_json()["error"],
+            "Ready state is only available in lobby-ready mode",
+        )
 
     def test_sensitive_host_data_is_blocked_without_host_login(self):
         self.start_four_player_game()
@@ -203,6 +217,21 @@ class MafiaGameTestCase(unittest.TestCase):
 
         reports = self.client.get(f"/police_reports/{police}").get_json()
         self.assertIn(f"{mafia} is Mafia", reports)
+
+    def test_actions_endpoint_marks_eliminated_roles_for_host(self):
+        self.start_four_player_game()
+        roles = self.client.get("/all_roles").get_json()
+        doctor = next(name for name, role in roles.items() if role == "Doctor")
+        police = next(name for name, role in roles.items() if role == "Police")
+
+        store.game_state.alive.remove(doctor)
+        store.game_state.eliminated.append(doctor)
+
+        actions = self.client.get("/actions").get_json()
+        self.assertEqual(actions["doctor_player"], doctor)
+        self.assertEqual(actions["doctor_status"], "Eliminated")
+        self.assertEqual(actions["police_player"], police)
+        self.assertEqual(actions["police_status"], "Pending")
 
     def test_non_police_player_has_no_police_reports(self):
         self.start_four_player_game()
@@ -504,6 +533,125 @@ class MafiaGameTestCase(unittest.TestCase):
         response = self.client.get("/players")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json(), [])
+
+
+class LobbyReadyModeTestCase(unittest.TestCase):
+    def setUp(self):
+        self.app = create_app(mode="lobby-ready")
+        self.client = self.app.test_client()
+        self.reset_store()
+
+    def tearDown(self):
+        self.reset_store()
+
+    def reset_store(self):
+        service.reset_game()
+        store.players = []
+        store.ready_players = {}
+        store.roles = {}
+        store.host_name = None
+        store.game_started = False
+        store.game_state.alive = []
+        store.game_state.eliminated = []
+        store.game_state.phase = "waiting"
+        store.game_state.round = 1
+        store.game_state.winner = None
+        store.actions = {"doctor": None, "police": None}
+        store.mafia_votes = {}
+        store.mafia_suggestions = {}
+        store.police_reports = {}
+        store.votes = {}
+        store.voted = {}
+        store.vote_history = []
+        store.last_seen = {}
+
+    def join_players(self, names):
+        for name in names:
+            response = self.client.post("/join", json={"name": name})
+            self.assertEqual(response.status_code, 200)
+
+    def ready_players(self, names):
+        for name in names:
+            response = self.client.post("/ready", json={"name": name, "ready": True})
+            self.assertEqual(response.status_code, 200)
+
+    def claim_host(self, client, name):
+        response = client.post("/host/claim", json={"name": name})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {"authorized": True})
+
+    def start_five_player_lobby_game(self):
+        players = ["A", "B", "C", "D", "E"]
+        self.join_players(players)
+        self.ready_players(players)
+        lobby = self.client.get("/lobby").get_json()
+        self.assertTrue(lobby["game_started"])
+        self.assertIsNotNone(lobby["host_name"])
+        return lobby
+
+    def test_lobby_ready_mode_auto_starts_and_assigns_host_only_role(self):
+        lobby = self.start_five_player_lobby_game()
+
+        host_client = self.app.test_client()
+        self.claim_host(host_client, lobby["host_name"])
+
+        roles = host_client.get("/all_roles").get_json()
+        state = host_client.get("/game_state").get_json()
+
+        self.assertEqual(roles[lobby["host_name"]], "Host")
+        self.assertEqual(sum(role == "Host" for role in roles.values()), 1)
+        self.assertNotIn(lobby["host_name"], state["alive"])
+
+    def test_lobby_ready_mode_rejects_access_code_login(self):
+        response = self.client.post("/host/login", json={"access_code": "mafia-host"})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.get_json()["error"],
+            "Host login is only used in dedicated-host mode",
+        )
+
+    def test_lobby_ready_mode_host_status_and_claim_work(self):
+        lobby = self.start_five_player_lobby_game()
+
+        outsider = self.app.test_client()
+        status = outsider.get("/host/status")
+        self.assertEqual(status.status_code, 200)
+        self.assertFalse(status.get_json()["authorized"])
+        self.assertEqual(status.get_json()["assigned_host"], lobby["host_name"])
+        self.assertEqual(status.get_json()["mode"], "lobby-ready")
+
+        wrong_name = next(player for player in lobby["players"] if player != lobby["host_name"])
+        wrong_claim = outsider.post("/host/claim", json={"name": wrong_name})
+        self.assertEqual(wrong_claim.status_code, 403)
+
+        self.claim_host(outsider, lobby["host_name"])
+        claimed_status = outsider.get("/host/status")
+        self.assertTrue(claimed_status.get_json()["authorized"])
+
+    def test_lobby_ready_mode_reset_clears_ready_state_and_host_assignment(self):
+        lobby = self.start_five_player_lobby_game()
+        host_client = self.app.test_client()
+        self.claim_host(host_client, lobby["host_name"])
+
+        response = host_client.post("/reset")
+        self.assertEqual(response.status_code, 200)
+
+        new_lobby = host_client.get("/lobby").get_json()
+        self.assertFalse(new_lobby["game_started"])
+        self.assertIsNone(new_lobby["host_name"])
+        self.assertEqual(
+            new_lobby["ready"],
+            {"A": False, "B": False, "C": False, "D": False, "E": False},
+        )
+
+    def test_lobby_ready_mode_blocks_manual_start_endpoint(self):
+        self.join_players(["A", "B", "C", "D", "E"])
+        response = self.client.post("/start")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.get_json()["error"],
+            "Lobby-ready mode starts automatically once everyone is ready",
+        )
 
 
 if __name__ == "__main__":

@@ -1,37 +1,66 @@
+:root {
+    --bg: #08131f;
+    --panel: rgba(9, 23, 37, 0.9);
+    --panel-strong: rgba(18, 35, 54, 0.95);
+    --text: #f7fbff;
+    --muted: #b5c8d8;
+    --border: rgba(148, 186, 216, 0.2);
+    --accent: #ff6b4a;
+    --accent-alt: #2fb4ff;
+}
+
+* {
+    box-sizing: border-box;
+}
+
 body {
     font-family: Arial, sans-serif;
-    background: #111;
-    color: #fff;
-    padding: 15px;
+    background:
+        radial-gradient(circle at top, rgba(47, 180, 255, 0.18), transparent 34%),
+        linear-gradient(180deg, #09111d 0%, #08131f 48%, #050a11 100%);
+    color: var(--text);
+    padding: 16px;
     margin: 0;
 }
 
+h1,
 h2,
 h3 {
-    margin: 8px 0;
+    margin: 0 0 10px;
 }
 
 h4 {
     margin: 10px 0 6px;
-    color: #cfd8dc;
+    color: var(--muted);
 }
 
 input,
 select,
 button {
     width: 100%;
-    padding: 12px;
+    padding: 13px 14px;
     margin-top: 8px;
     font-size: 16px;
-    border-radius: 8px;
-    border: none;
-    box-sizing: border-box;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+}
+
+input,
+select {
+    background: rgba(255, 255, 255, 0.95);
+    color: #102030;
 }
 
 button {
-    background: #ff4757;
+    background: linear-gradient(135deg, var(--accent), #ff8452);
     color: #fff;
     cursor: pointer;
+    border: none;
+    font-weight: 700;
+}
+
+button.secondary {
+    background: linear-gradient(135deg, #2fb4ff, #1e88d3);
 }
 
 button:disabled {
@@ -39,34 +68,72 @@ button:disabled {
     cursor: not-allowed;
 }
 
+.page-shell {
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 14px;
+}
+
 .card {
-    background: #1e1e1e;
-    padding: 12px;
-    border-radius: 10px;
-    margin-top: 12px;
+    background: var(--panel);
+    padding: 16px;
+    border-radius: 18px;
+    margin-top: 14px;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
+}
+
+.hero-card {
+    background: linear-gradient(145deg, rgba(18, 35, 54, 0.98), rgba(7, 19, 31, 0.92));
+}
+
+.eyebrow {
+    margin: 0 0 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    font-size: 12px;
+    color: #86d0ff;
+}
+
+.lead,
+.support-text {
+    color: var(--muted);
+}
+
+.join-row,
+.ready-row {
+    display: grid;
+    gap: 10px;
 }
 
 .dead-banner {
     background: #c0392b;
     padding: 12px;
     text-align: center;
-    border-radius: 10px;
+    border-radius: 12px;
     font-weight: bold;
 }
 
 .waiting-banner {
-    background: #3498db;
+    background: linear-gradient(135deg, var(--accent-alt), #1e88d3);
     padding: 12px;
     text-align: center;
-    border-radius: 10px;
+    border-radius: 12px;
+    margin-top: 12px;
 }
 
 .mafia-team {
-    color: #e74c3c;
+    color: #ff8a7a;
 }
 
 .winner-text {
-    color: #f1c40f;
+    color: #ffd056;
 }
 
 .hidden {
@@ -75,4 +142,21 @@ button:disabled {
 
 ul {
     padding-left: 20px;
+    margin: 0;
+}
+
+li {
+    margin-bottom: 6px;
+}
+
+@media (min-width: 720px) {
+    .join-row {
+        grid-template-columns: minmax(0, 1.7fr) minmax(180px, 0.8fr);
+        align-items: end;
+    }
+
+    .ready-row {
+        grid-template-columns: minmax(220px, 0.7fr) minmax(0, 1fr);
+        align-items: center;
+    }
 }

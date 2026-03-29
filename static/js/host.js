@@ -1,13 +1,35 @@
+const appConfig = window.APP_CONFIG || {};
+const gameMode = appConfig.game_mode || "dedicated-host";
+
 let currentPhase = "";
 let loading = false;
 let hostAuthorized = false;
 
-document.getElementById("startBtn").addEventListener("click", startGame);
-document.getElementById("resolveBtn").addEventListener("click", resolveNight);
-document.getElementById("startVoteBtn").addEventListener("click", startVoting);
-document.getElementById("endVoteBtn").addEventListener("click", endVoting);
-document.getElementById("endGameBtn").addEventListener("click", endGame);
-document.getElementById("hostLoginBtn").addEventListener("click", loginHost);
+const startBtn = document.getElementById("startBtn");
+const resolveBtn = document.getElementById("resolveBtn");
+const startVoteBtn = document.getElementById("startVoteBtn");
+const endVoteBtn = document.getElementById("endVoteBtn");
+const endGameBtn = document.getElementById("endGameBtn");
+const hostLoginBtn = document.getElementById("hostLoginBtn");
+const hostAccessCodeInput = document.getElementById("hostAccessCode");
+
+if (startBtn) {
+    startBtn.addEventListener("click", startGame);
+}
+resolveBtn.addEventListener("click", resolveNight);
+startVoteBtn.addEventListener("click", startVoting);
+endVoteBtn.addEventListener("click", endVoting);
+endGameBtn.addEventListener("click", endGame);
+if (hostLoginBtn) {
+    hostLoginBtn.addEventListener("click", loginHost);
+}
+if (hostAccessCodeInput) {
+    hostAccessCodeInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+            loginHost();
+        }
+    });
+}
 
 function safeFetch(url, options = {}) {
     if (loading) {
@@ -48,7 +70,16 @@ function updateHostAccessUi() {
 }
 
 function loginHost() {
-    const accessCode = document.getElementById("hostAccessCode").value.trim();
+    if (gameMode !== "dedicated-host" || !hostAccessCodeInput) {
+        return;
+    }
+
+    const accessCode = hostAccessCodeInput.value.trim();
+
+    if (!accessCode) {
+        setAuthStatus("Enter the host access code to continue.");
+        return;
+    }
 
     fetch("/host/login", {
         method: "POST",
@@ -64,10 +95,48 @@ function loginHost() {
         .then(({ ok, data }) => {
             hostAuthorized = ok && Boolean(data.authorized);
             updateHostAccessUi();
+            setAuthStatus(hostAuthorized ? "Host panel unlocked." : (data.error || "Access denied"));
+            if (hostAuthorized) {
+                hostAccessCodeInput.value = "";
+                loadAllHostData();
+            }
+        })
+        .catch(() => {
+            hostAuthorized = false;
+            updateHostAccessUi();
+            setAuthStatus("Unable to unlock the host panel right now.");
+        });
+}
+
+function autoClaimHost(name) {
+    if (!name) {
+        return Promise.resolve(false);
+    }
+
+    return fetch("/host/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name })
+    })
+        .then((response) =>
+            response.json().then((data) => ({
+                ok: response.ok,
+                data
+            }))
+        )
+        .then(({ ok, data }) => {
+            hostAuthorized = ok && Boolean(data.authorized);
+            updateHostAccessUi();
             setAuthStatus(hostAuthorized ? "" : (data.error || "Access denied"));
             if (hostAuthorized) {
                 loadAllHostData();
+                window.history.replaceState({}, document.title, "/host");
             }
+            return hostAuthorized;
+        })
+        .catch(() => {
+            setAuthStatus("Unable to verify host access.");
+            return false;
         });
 }
 
@@ -77,6 +146,43 @@ function loadHostStatus() {
         .then((data) => {
             hostAuthorized = Boolean(data.authorized);
             updateHostAccessUi();
+
+            if (gameMode === "lobby-ready") {
+                const label = document.getElementById("assignedHostLabel");
+                if (label) {
+                    if (!data.game_started) {
+                        label.innerText = "No host yet. Once all players ready up, one joined player will be assigned automatically.";
+                    } else if (data.assigned_host) {
+                        label.innerText = "Assigned host: " + data.assigned_host;
+                    } else {
+                        label.innerText = "Host assignment unavailable.";
+                    }
+                }
+
+                setAuthStatus(
+                    hostAuthorized
+                        ? ""
+                        : "Open this page from the assigned host player's game screen."
+                );
+
+                if (hostAuthorized) {
+                    loadAllHostData();
+                    return;
+                }
+
+                const playerName = new URLSearchParams(window.location.search).get("player_name");
+                if (playerName && data.assigned_host === playerName) {
+                    autoClaimHost(playerName);
+                }
+                return;
+            }
+
+            if (hostAuthorized) {
+                loadAllHostData();
+                return;
+            }
+
+            setAuthStatus("Enter the host access code to continue.");
         });
 }
 
@@ -116,11 +222,7 @@ function loadPlayers() {
     fetch("/players")
         .then((r) => r.json())
         .then((players) => {
-            const list = document.getElementById("players");
-            list.innerHTML = "";
-            players.forEach((player) => {
-                list.innerHTML += `<li>${player}</li>`;
-            });
+            renderList(players, "players", "No joined players");
         });
 }
 
@@ -130,6 +232,12 @@ function loadRoles() {
         .then((data) => {
             const list = document.getElementById("roles");
             list.innerHTML = "";
+
+            if (!Object.keys(data).length) {
+                list.innerHTML = "<li>No roles assigned yet</li>";
+                return;
+            }
+
             Object.keys(data).forEach((name) => {
                 list.innerHTML += `<li>${name} -> ${data[name]}</li>`;
             });
@@ -143,18 +251,51 @@ function loadActions() {
             const list = document.getElementById("actions");
             list.innerHTML = "";
 
-            list.innerHTML += `<li>Doctor -> ${data.doctor || "-"}</li>`;
-            list.innerHTML += `<li>Police -> ${data.police || "-"}</li>`;
+            list.innerHTML += `
+                <li>
+                    Doctor (${data.doctor_player || "-"}) -> ${formatRoleActionStatus(
+                        data.doctor_status,
+                        data.doctor
+                    )}
+                </li>
+            `;
+            list.innerHTML += `
+                <li>
+                    Police (${data.police_player || "-"}) -> ${formatRoleActionStatus(
+                        data.police_status,
+                        data.police
+                    )}
+                </li>
+            `;
 
             const mafiaVotes = data.mafia_votes || {};
-            if (!Object.keys(mafiaVotes).length) {
-                list.innerHTML += "<li>Mafia -> -</li>";
-            } else {
-                Object.keys(mafiaVotes).forEach((mafiaPlayer) => {
-                    list.innerHTML += `<li>Mafia (${mafiaPlayer}) -> ${mafiaVotes[mafiaPlayer]}</li>`;
-                });
+            const aliveMafia = data.mafia_alive || [];
+            const eliminatedMafia = data.mafia_eliminated || [];
+
+            if (!aliveMafia.length && !eliminatedMafia.length) {
+                list.innerHTML += "<li>Mafia -> Unavailable</li>";
+                return;
             }
+
+            aliveMafia.forEach((mafiaPlayer) => {
+                list.innerHTML += `
+                    <li>
+                        Mafia (${mafiaPlayer}) -> ${mafiaVotes[mafiaPlayer] || "Pending"}
+                    </li>
+                `;
+            });
+
+            eliminatedMafia.forEach((mafiaPlayer) => {
+                list.innerHTML += `<li>Mafia (${mafiaPlayer}) -> Eliminated</li>`;
+            });
         });
+}
+
+function formatRoleActionStatus(status, actionValue) {
+    if (status === "Submitted") {
+        return actionValue;
+    }
+    return status || "-";
 }
 
 function loadSuggestions() {
@@ -208,9 +349,17 @@ function loadVotes() {
             countsList.innerHTML = "";
             detailsList.innerHTML = "";
 
+            if (!Object.keys(data.counts).length) {
+                countsList.innerHTML = "<li>No live votes</li>";
+            }
+
             Object.keys(data.counts).forEach((target) => {
                 countsList.innerHTML += `<li>${target} -> ${data.counts[target]}</li>`;
             });
+
+            if (!Object.keys(data.individual).length) {
+                detailsList.innerHTML = "<li>No votes submitted yet</li>";
+            }
 
             Object.keys(data.individual).forEach((voter) => {
                 detailsList.innerHTML += `<li>${voter} -> ${data.individual[voter]}</li>`;
@@ -225,6 +374,11 @@ function loadVoteHistory() {
             const list = document.getElementById("voteHistory");
             list.innerHTML = "";
 
+            if (!history.length) {
+                list.innerHTML = "<li>No vote history yet</li>";
+                return;
+            }
+
             history.forEach((entry) => {
                 list.innerHTML += `
                     <li>
@@ -236,10 +390,12 @@ function loadVoteHistory() {
 }
 
 function updateButtons(phase) {
-    document.getElementById("startBtn").disabled = phase !== "waiting";
-    document.getElementById("resolveBtn").disabled = phase !== "night";
-    document.getElementById("startVoteBtn").disabled = phase !== "day";
-    document.getElementById("endVoteBtn").disabled = phase !== "voting";
+    if (startBtn) {
+        startBtn.disabled = phase !== "waiting";
+    }
+    resolveBtn.disabled = phase !== "night";
+    startVoteBtn.disabled = phase !== "day";
+    endVoteBtn.disabled = phase !== "voting";
 }
 
 function renderList(items, id, emptyMessage = "-") {

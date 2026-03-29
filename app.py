@@ -1,4 +1,29 @@
-from mafia_game import create_app
+from __future__ import annotations
+
+import argparse
+
+from mafia_game import DEFAULT_GAME_MODE, GAME_MODES, create_app
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run the Mafia game server with a selected game mode."
+    )
+    parser.add_argument(
+        "--mode",
+        choices=sorted(GAME_MODES),
+        default=DEFAULT_GAME_MODE,
+        help="Choose between the classic dedicated host flow and the ready-up lobby flow.",
+    )
+    parser.add_argument("--host", default="0.0.0.0", help="Host interface to bind.")
+    parser.add_argument("--port", type=int, default=5000, help="Port to bind.")
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Run Flask in debug mode.",
+    )
+    return parser.parse_args()
+
 
 app = create_app()
 """
@@ -390,4 +415,6 @@ def next_round():
 """
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    args = parse_args()
+    app = create_app(mode=args.mode)
+    app.run(host=args.host, port=args.port, debug=args.debug)

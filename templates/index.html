@@ -8,50 +8,96 @@
 </head>
 <body>
 
-<h2>Mafia Game</h2>
+<main class="page-shell">
+    <section class="card hero-card">
+        <p class="eyebrow">
+            {% if game_mode == "lobby-ready" %}
+            Mafia Party Lobby
+            {% else %}
+            Dedicated Host Game
+            {% endif %}
+        </p>
+        <h1>Mafia Game</h1>
+        <p class="lead">
+            {% if game_mode == "lobby-ready" %}
+            Join the shared lobby, mark yourself ready, and the game will begin automatically once everyone is set.
+            {% else %}
+            Join the room and wait for the dedicated host to unlock the host panel and start the match.
+            {% endif %}
+        </p>
+        <div class="join-row">
+            <input id="name" placeholder="Enter your name">
+            <button id="joinBtn" type="button">
+                {% if game_mode == "lobby-ready" %}Join Lobby{% else %}Join Game{% endif %}
+            </button>
+        </div>
+        {% if game_mode == "lobby-ready" %}
+        <div class="ready-row">
+            <button id="readyBtn" type="button" disabled>I am Ready</button>
+            <p id="readyHint" class="support-text">Join first, then mark yourself ready.</p>
+        </div>
+        {% endif %}
+        <div id="waitingBox"></div>
+        <div id="deadBanner"></div>
+    </section>
 
-<div class="card">
-    <input id="name" placeholder="Enter your name">
-    <button id="joinBtn" type="button">Join</button>
-</div>
+    <section class="grid">
+        <div class="card">
+            <h3>Match Status</h3>
+            <p id="hostNotice" class="support-text">
+                {% if game_mode == "lobby-ready" %}
+                Host will be assigned automatically when the match starts.
+                {% else %}
+                A dedicated host controls this match from the host panel.
+                {% endif %}
+            </p>
+            {% if game_mode == "lobby-ready" %}
+            <button id="openHostBtn" type="button" class="secondary hidden">Open Host Panel</button>
+            {% endif %}
+            <h3 id="role"></h3>
+            <h3 id="mafiaTeam" class="mafia-team"></h3>
+            <h3 id="round"></h3>
+            <h3 id="phase"></h3>
+            <h2 id="winner" class="winner-text"></h2>
+        </div>
 
-<div id="waitingBox"></div>
-<div id="deadBanner"></div>
+        <div class="card">
+            <h3>{% if game_mode == "lobby-ready" %}Lobby Players{% else %}Joined Players{% endif %}</h3>
+            <ul id="lobbyPlayers"></ul>
+        </div>
 
-<div class="card">
-    <h3 id="role"></h3>
-    <h3 id="mafiaTeam" class="mafia-team"></h3>
-    <h3 id="round"></h3>
-    <h3 id="phase"></h3>
-    <h2 id="winner" class="winner-text"></h2>
-</div>
+        <div id="actionBox" class="card"></div>
+        <div id="suggestBox" class="card"></div>
+        <div id="voteBox" class="card"></div>
 
-<div id="actionBox" class="card"></div>
-<div id="suggestBox" class="card"></div>
-<div id="voteBox" class="card"></div>
-<div id="liveVoteBox" class="card hidden">
-    <h3>Live Voting</h3>
-    <h4>Vote Counts</h4>
-    <ul id="liveVoteCounts"></ul>
-    <h4>Who Voted Whom</h4>
-    <ul id="liveVoteDetails"></ul>
-</div>
+        <div id="liveVoteBox" class="card hidden">
+            <h3>Live Voting</h3>
+            <h4>Vote Counts</h4>
+            <ul id="liveVoteCounts"></ul>
+            <h4>Who Voted Whom</h4>
+            <ul id="liveVoteDetails"></ul>
+        </div>
 
-<div id="policeBox" class="card hidden">
-    <h3>Police Reports</h3>
-    <ul id="reports"></ul>
-</div>
+        <div id="policeBox" class="card hidden">
+            <h3>Police Reports</h3>
+            <ul id="reports"></ul>
+        </div>
 
-<div class="card">
-    <h3>Alive</h3>
-    <ul id="alive"></ul>
-</div>
+        <div class="card">
+            <h3>Alive</h3>
+            <ul id="alive"></ul>
+        </div>
 
-<div class="card">
-    <h3>Dead</h3>
-    <ul id="dead"></ul>
-</div>
+        <div class="card">
+            <h3>Dead</h3>
+            <ul id="dead"></ul>
+        </div>
+    </section>
+</main>
 
+<script>
+window.APP_CONFIG = {{ app_config | tojson }};
+</script>
 <script src="{{ url_for('static', filename='js/player.js') }}"></script>
 </body>
 </html>

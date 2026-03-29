@@ -25,7 +25,9 @@ class GameState:
 @dataclass
 class GameStore:
     players: List[str] = field(default_factory=list)
+    ready_players: Dict[str, bool] = field(default_factory=dict)
     roles: Dict[str, str] = field(default_factory=dict)
+    host_name: Optional[str] = None
     game_started: bool = False
     game_state: GameState = field(default_factory=GameState)
     actions: Dict[str, Optional[str]] = field(
@@ -41,6 +43,7 @@ class GameStore:
 
     def reset_match_state(self) -> None:
         self.roles = {}
+        self.host_name = None
         self.game_started = False
         self.game_state = GameState()
         self.actions = {"doctor": None, "police": None}
@@ -50,3 +53,4 @@ class GameStore:
         self.votes = {}
         self.voted = {}
         self.vote_history = []
+        self.ready_players = {player: False for player in self.players}
